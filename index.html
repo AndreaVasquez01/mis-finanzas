@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --orange: #E8431A;
@@ -34,9 +35,11 @@
     -webkit-font-smoothing: antialiased;
   }
   .wrap { max-width: 460px; margin: 0 auto; min-height: 100vh; background: var(--bg); padding-bottom: 48px; }
-  header { padding: 22px 18px 16px; }
+  header { padding: 22px 18px 16px; display: flex; justify-content: space-between; align-items: flex-start; }
   header h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
   header p { font-size: 12px; color: var(--text-3); margin: 3px 0 0; }
+  .signout-btn { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-family: inherit; font-size: 11.5px; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+  .signout-btn:hover { border-color: var(--text-3); }
   nav.tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 5; }
   nav.tabs button {
     flex: 1; padding: 12px 4px; font-family: inherit; font-size: 13px; font-weight: 500;
@@ -98,6 +101,7 @@
     background: var(--orange); color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 4px;
   }
   .submit-btn:hover { background: var(--orange-dark); }
+  .submit-btn:disabled { opacity: 0.6; cursor: default; }
   .balance-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; text-align: center; margin-bottom: 20px; }
   .balance-hero p.label { font-size: 12px; color: var(--text-2); margin: 0 0 6px; }
   .balance-hero p.value { font-size: 30px; font-weight: 700; margin: 0; font-family: 'DM Mono', monospace; }
@@ -117,13 +121,49 @@
   .disclaimer { font-size: 11px; color: var(--text-3); margin: 9px 0 0; }
   .save-status { font-size: 11px; color: var(--text-3); padding: 0 18px 4px; }
   .save-status.err { color: var(--red); }
+
+  /* LOGIN */
+  .login-wrap { max-width: 380px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 24px; }
+  .login-card h1 { font-size: 20px; margin: 0 0 4px; font-weight: 700; }
+  .login-card p.sub { font-size: 13px; color: var(--text-2); margin: 0 0 22px; }
+  .login-toggle { display: flex; gap: 6px; margin-bottom: 18px; }
+  .login-toggle button { flex: 1; padding: 8px 4px; font-family: inherit; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer; }
+  .login-toggle button.active { border-color: var(--orange); background: #FCEEE8; color: var(--orange-dark); font-weight: 500; }
+  .login-error { background: var(--red-bg); color: var(--red); font-size: 12.5px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  .login-info { background: var(--green-bg); color: var(--green); font-size: 12.5px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  #loadingScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
+
+<div id="loadingScreen">Cargando…</div>
+
+<!-- LOGIN -->
+<div class="login-wrap hidden" id="loginScreen">
+  <div class="login-card">
     <h1>Mis finanzas</h1>
-    <p>Control de ingresos, gastos y ahorro</p>
+    <p class="sub">Inicia sesión para acceder a tus datos desde cualquier dispositivo.</p>
+    <div class="login-toggle">
+      <button id="toggleLogin" class="active">Iniciar sesión</button>
+      <button id="toggleSignup">Crear cuenta</button>
+    </div>
+    <div id="loginError" class="login-error hidden"></div>
+    <div id="loginInfo" class="login-info hidden"></div>
+    <input type="email" id="loginEmail" placeholder="Correo electrónico" class="gap" autocomplete="email" />
+    <input type="password" id="loginPassword" placeholder="Contraseña" class="gap" autocomplete="current-password" />
+    <button class="submit-btn" id="btnLoginSubmit">Iniciar sesión</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="wrap hidden" id="appWrap">
+  <header>
+    <div>
+      <h1>Mis finanzas</h1>
+      <p id="userEmailLabel">Control de ingresos, gastos y ahorro</p>
+    </div>
+    <button class="signout-btn" id="btnSignOut">Cerrar sesión</button>
   </header>
 
   <nav class="tabs">
@@ -221,43 +261,192 @@
 </div>
 
 <script>
+// ====== CONFIGURA AQUÍ TU PROYECTO DE SUPABASE ======
+const SUPABASE_URL = 'https://dbfsndsgmvwszcfgaqft.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_1O2zHy7x8stWj6GiVKA1xg_FZzXzMoS';
+// =====================================================
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 const CAT_GASTOS = ["🛒 Comida (mercado)","🚗 Transporte","🏠 Vivienda (arriendo)","🔌 Servicios","💊 Salud","🧒 Joaquín (hijo)","🥃 Licor","🍽️ Comida fines de semana","🎉 Salidas ocio","🛵 Rappi","🏢 Cuota apto","🛍️ Compras","📦 Otros"];
 const CAT_INGRESOS = ["💼 Salario","➕ Extras"];
 const CAT_DISCRECIONAL = ["🥃 Licor","🍽️ Comida fines de semana","🎉 Salidas ocio","🛵 Rappi","🛍️ Compras"];
 const COLORS = ['#E8431A','#1A7A4C','#2A5DAC','#C9A227','#7C5CBF','#C0392B','#B8568A','#D9863E','#5A8FBF','#A8763E','#4D9E8C','#8B8B7A','#6B6B6B'];
 const TEAL = ['#2A5DAC','#1A7A4C','#0F5C40','#15406B'];
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-const STORAGE_KEY = 'mis-finanzas-registros-v1';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(Math.round(n||0));
 const ymKey = (f) => f ? f.slice(0,7) : '';
 const ymLabel = (k) => { const [y,m] = k.split('-'); return MESES[parseInt(m,10)-1] + ' ' + y; };
 
-function cargar(){
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch(e){ return []; }
-}
-function guardar(registros){
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
-    $('saveStatus').textContent = '';
-    $('saveStatus').classList.remove('err');
-  } catch(e){
-    $('saveStatus').textContent = 'No se pudo guardar el último cambio en este navegador.';
-    $('saveStatus').classList.add('err');
-  }
-}
-
-let registros = cargar();
+let registros = [];
 let tipo = 'gasto';
 let mesActivo = 'todos';
 let busqueda = '';
 let editingId = null;
 let chartCat, chartBal;
+let currentUser = null;
 
+// ---------- MAPEO DB <-> APP ----------
+// La tabla en Supabase usa tasa_ea (snake_case); la app usa tasaEA
+function fromDB(row){
+  return {
+    id: row.id,
+    tipo: row.tipo,
+    monto: Number(row.monto),
+    descripcion: row.descripcion,
+    categoria: row.categoria,
+    bolsillo: row.bolsillo,
+    tasaEA: row.tasa_ea != null ? Number(row.tasa_ea) : 0,
+    fecha: row.fecha,
+  };
+}
+function toDB(datos){
+  return {
+    tipo: datos.tipo,
+    monto: datos.monto,
+    descripcion: datos.descripcion,
+    categoria: datos.categoria,
+    bolsillo: datos.bolsillo || null,
+    tasa_ea: datos.tasaEA || null,
+    fecha: datos.fecha,
+    user_id: currentUser.id,
+  };
+}
+
+// ---------- AUTENTICACIÓN ----------
+let modoLogin = 'login'; // 'login' | 'signup'
+
+function mostrarErrorLogin(msg){
+  $('loginError').textContent = msg;
+  $('loginError').classList.remove('hidden');
+  $('loginInfo').classList.add('hidden');
+}
+function mostrarInfoLogin(msg){
+  $('loginInfo').textContent = msg;
+  $('loginInfo').classList.remove('hidden');
+  $('loginError').classList.add('hidden');
+}
+function limpiarMensajesLogin(){
+  $('loginError').classList.add('hidden');
+  $('loginInfo').classList.add('hidden');
+}
+
+$('toggleLogin').addEventListener('click', () => {
+  modoLogin = 'login';
+  $('toggleLogin').classList.add('active');
+  $('toggleSignup').classList.remove('active');
+  $('btnLoginSubmit').textContent = 'Iniciar sesión';
+  limpiarMensajesLogin();
+});
+$('toggleSignup').addEventListener('click', () => {
+  modoLogin = 'signup';
+  $('toggleSignup').classList.add('active');
+  $('toggleLogin').classList.remove('active');
+  $('btnLoginSubmit').textContent = 'Crear cuenta';
+  limpiarMensajesLogin();
+});
+
+$('btnLoginSubmit').addEventListener('click', async () => {
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPassword').value;
+  if(!email || !password){ mostrarErrorLogin('Completa correo y contraseña.'); return; }
+  $('btnLoginSubmit').disabled = true;
+  limpiarMensajesLogin();
+
+  try {
+    if(modoLogin === 'login'){
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      // onAuthStateChange se encarga de mostrar la app
+    } else {
+      const { error } = await supabaseClient.auth.signUp({ email, password });
+      if(error) throw error;
+      mostrarInfoLogin('Cuenta creada. Iniciando sesión…');
+    }
+  } catch(e){
+    mostrarErrorLogin(traducirErrorAuth(e.message));
+  } finally {
+    $('btnLoginSubmit').disabled = false;
+  }
+});
+
+function traducirErrorAuth(msg){
+  if(/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
+  if(/already registered/i.test(msg)) return 'Ese correo ya tiene una cuenta. Inicia sesión en vez de crear una nueva.';
+  if(/Password should be/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
+  return msg;
+}
+
+$('btnSignOut').addEventListener('click', async () => {
+  await supabaseClient.auth.signOut();
+});
+
+async function mostrarApp(user){
+  currentUser = user;
+  $('loadingScreen').classList.add('hidden');
+  $('loginScreen').classList.add('hidden');
+  $('appWrap').classList.remove('hidden');
+  $('userEmailLabel').textContent = user.email;
+  await cargarYRenderizarTodo();
+}
+
+function mostrarLogin(){
+  currentUser = null;
+  $('loadingScreen').classList.add('hidden');
+  $('appWrap').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+}
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if(session && session.user){
+    mostrarApp(session.user);
+  } else {
+    mostrarLogin();
+  }
+});
+
+// Chequeo inicial de sesión (por si onAuthStateChange no dispara de inmediato)
+supabaseClient.auth.getSession().then(({ data }) => {
+  if(data.session && data.session.user){
+    mostrarApp(data.session.user);
+  } else {
+    mostrarLogin();
+  }
+});
+
+// ---------- CARGA DE DATOS ----------
+async function cargarRegistros(){
+  const { data, error } = await supabaseClient
+    .from('registros')
+    .select('*')
+    .order('fecha', { ascending: true });
+  if(error){
+    mostrarEstadoGuardado(false);
+    return [];
+  }
+  mostrarEstadoGuardado(true);
+  return data.map(fromDB);
+}
+
+function mostrarEstadoGuardado(ok){
+  if(ok){
+    $('saveStatus').textContent = '';
+    $('saveStatus').classList.remove('err');
+  } else {
+    $('saveStatus').textContent = 'No se pudo sincronizar con el servidor. Revisa tu conexión.';
+    $('saveStatus').classList.add('err');
+  }
+}
+
+async function cargarYRenderizarTodo(){
+  registros = await cargarRegistros();
+  actualizarFiltroMes();
+  renderTodo();
+}
+
+// ---------- TABS ----------
 function setTab(name){
   ['inicio','gastos','agregar','balance'].forEach(t => {
     $('panel-'+t).classList.toggle('hidden', t !== name);
@@ -467,20 +656,22 @@ function renderBalanceTab(){
   document.querySelectorAll('#listaMovimientos .edit').forEach(btn => btn.addEventListener('click', onEditar));
 }
 
-function onBorrar(e){
-  const id = Number(e.currentTarget.dataset.id);
+async function onBorrar(e){
+  const id = e.currentTarget.dataset.id;
   if(editingId === id) cancelarEdicion();
-  registros = registros.filter(r => r.id !== id);
-  guardar(registros);
+  const { error } = await supabaseClient.from('registros').delete().eq('id', id);
+  mostrarEstadoGuardado(!error);
+  if(error) return;
+  registros = registros.filter(r => String(r.id) !== id);
   actualizarFiltroMes();
   renderTodo();
 }
 
 function onEditar(e){
-  const id = Number(e.currentTarget.dataset.id);
-  const r = registros.find(x => x.id === id);
+  const id = e.currentTarget.dataset.id;
+  const r = registros.find(x => String(x.id) === id);
   if(!r) return;
-  editingId = id;
+  editingId = r.id;
   tipo = r.tipo;
   pintarBotonTipo();
   renderCategorias();
@@ -530,7 +721,7 @@ $('btnDescargar').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-$('btnAgregar').addEventListener('click', () => {
+$('btnAgregar').addEventListener('click', async () => {
   const monto = parseFloat($('monto').value);
   const descripcion = $('descripcion').value.trim();
   const fecha = $('fecha').value;
@@ -546,24 +737,29 @@ $('btnAgregar').addEventListener('click', () => {
     datosNuevos = { tipo, monto, descripcion, categoria: $('categoria').value, fecha };
   }
 
-  if(editingId !== null){
-    const idx = registros.findIndex(r => r.id === editingId);
-    if(idx !== -1) registros[idx] = { ...registros[idx], ...datosNuevos };
-    cancelarEdicion();
-  } else {
-    registros.push({ id: Date.now(), ...datosNuevos });
-    if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
-    $('monto').value = ''; $('descripcion').value = '';
+  $('btnAgregar').disabled = true;
+  try {
+    if(editingId !== null){
+      const { error } = await supabaseClient.from('registros').update(toDB(datosNuevos)).eq('id', editingId);
+      if(error) throw error;
+      cancelarEdicion();
+    } else {
+      const { error } = await supabaseClient.from('registros').insert(toDB(datosNuevos));
+      if(error) throw error;
+      if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
+      $('monto').value = ''; $('descripcion').value = '';
+    }
+    mostrarEstadoGuardado(true);
+    registros = await cargarRegistros();
+    actualizarFiltroMes();
+    renderTodo();
+    setTab('inicio');
+  } catch(e){
+    mostrarEstadoGuardado(false);
+  } finally {
+    $('btnAgregar').disabled = false;
   }
-
-  guardar(registros);
-  actualizarFiltroMes();
-  renderTodo();
-  setTab('inicio');
 });
-
-actualizarFiltroMes();
-renderTodo();
 </script>
 </body>
 </html>
