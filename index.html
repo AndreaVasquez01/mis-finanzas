@@ -74,6 +74,10 @@
   .amt.ahorro { color: var(--blue); }
   .del { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   .del:hover { color: var(--red); }
+  .edit { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .edit:hover { color: var(--orange); }
+  .editing-banner { display: flex; justify-content: space-between; align-items: center; background: #FCEEE8; border: 1px solid var(--orange); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12.5px; color: var(--orange-dark); }
+  .editing-banner button { background: none; border: none; color: var(--orange-dark); text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 12.5px; padding: 0; }
   .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-2); margin: 10px 0 18px; }
   .legend span { display: flex; align-items: center; gap: 5px; }
   .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
@@ -170,6 +174,10 @@
 
     <!-- AGREGAR -->
     <section id="panel-agregar" class="hidden">
+      <div class="editing-banner hidden" id="editingBanner">
+        <span>✎ Editando un registro existente</span>
+        <button id="btnCancelarEdicion">Cancelar</button>
+      </div>
       <div class="form-card">
         <div class="type-toggle">
           <button id="btnGasto" class="active">💸 Gasto</button>
@@ -205,6 +213,9 @@
       <p class="section-label">Análisis ejecutivo</p>
       <div class="analysis-card" id="analisisEjecutivo"></div>
       <p class="disclaimer">Análisis general basado en tus propios datos. No es asesoría financiera profesional ni una recomendación de inversión personalizada.</p>
+
+      <p class="section-label" style="margin-top:26px;">Todos los movimientos</p>
+      <div class="list" id="listaMovimientos"></div>
     </section>
   </main>
 </div>
@@ -244,6 +255,7 @@ let registros = cargar();
 let tipo = 'gasto';
 let mesActivo = 'todos';
 let busqueda = '';
+let editingId = null;
 let chartCat, chartBal;
 
 function setTab(name){
@@ -324,12 +336,14 @@ function getBolsillos(){
   });
   return b;
 }
-function rowHTML(r, conBorrar){
+function rowHTML(r, opts){
+  opts = opts || {};
   const cls = r.tipo==='ingreso' ? 'in' : r.tipo==='ahorro' ? 'ahorro' : 'gasto';
   const signo = r.tipo==='ingreso' ? '+' : '-';
+  const botones = (opts.conEditar ? '<button class="edit" data-id="'+r.id+'" aria-label="Editar">✎</button>' : '') +
+    (opts.conBorrar ? '<button class="del" data-id="'+r.id+'" aria-label="Eliminar">✕</button>' : '');
   return '<div class="row"><div><p class="desc">'+r.descripcion+'</p><p class="meta">'+r.categoria+' · '+r.fecha+'</p></div>'+
-    '<div class="right"><span class="amt '+cls+'">'+signo+fmt(r.monto)+'</span>'+
-    (conBorrar ? '<button class="del" data-id="'+r.id+'" aria-label="Eliminar">✕</button>' : '')+'</div></div>';
+    '<div class="right"><span class="amt '+cls+'">'+signo+fmt(r.monto)+'</span>'+botones+'</div></div>';
 }
 
 function renderInicio(){
@@ -349,7 +363,7 @@ function renderInicio(){
   }).join('') + '<div style="height:8px;"></div>' : '<p class="empty">Sin gastos todavía.</p>';
 
   const ultimos = registrosFiltrados().filter(r=>r.tipo==='gasto').slice(-5).reverse();
-  $('ultimos5').innerHTML = ultimos.length ? ultimos.map(r=>rowHTML(r,false)).join('') : '<p class="empty">Agrega tu primer gasto en la pestaña Agregar.</p>';
+  $('ultimos5').innerHTML = ultimos.length ? ultimos.map(r=>rowHTML(r,{})).join('') : '<p class="empty">Agrega tu primer gasto en la pestaña Agregar.</p>';
 
   const bolsillos = getBolsillos();
   const nombres = Object.keys(bolsillos);
@@ -381,8 +395,9 @@ function renderGastosTab(){
   const gastos = gastosVisibles();
   const totalB = gastos.reduce((a,r)=>a+r.monto,0);
   $('totalFiltrado').textContent = gastos.length ? '· ' + fmt(totalB) : '';
-  $('listaGastos').innerHTML = gastos.length ? gastos.slice().reverse().map(r=>rowHTML(r,true)).join('') : '<p class="empty">No hay gastos que coincidan.</p>';
+  $('listaGastos').innerHTML = gastos.length ? gastos.slice().reverse().map(r=>rowHTML(r,{conBorrar:true, conEditar:true})).join('') : '<p class="empty">No hay gastos que coincidan.</p>';
   document.querySelectorAll('#listaGastos .del').forEach(btn => btn.addEventListener('click', onBorrar));
+  document.querySelectorAll('#listaGastos .edit').forEach(btn => btn.addEventListener('click', onEditar));
 }
 
 function renderBalanceTab(){
@@ -443,15 +458,56 @@ function renderBalanceTab(){
     bullets.push('Aún no tienes bolsillos de ahorro registrados este periodo. Empieza por separar un fondo de emergencia líquido (3-6 meses de gastos fijos) antes de considerar instrumentos de mayor plazo.');
   }
   $('analisisEjecutivo').innerHTML = '<ul>'+bullets.map(b=>'<li>'+b+'</li>').join('')+'</ul>';
+
+  const movimientos = registrosFiltrados().slice().sort((a,b) => (a.fecha < b.fecha ? 1 : -1));
+  $('listaMovimientos').innerHTML = movimientos.length
+    ? movimientos.map(r => rowHTML(r, { conBorrar:true, conEditar:true })).join('')
+    : '<p class="empty">Sin movimientos en este periodo.</p>';
+  document.querySelectorAll('#listaMovimientos .del').forEach(btn => btn.addEventListener('click', onBorrar));
+  document.querySelectorAll('#listaMovimientos .edit').forEach(btn => btn.addEventListener('click', onEditar));
 }
 
 function onBorrar(e){
   const id = Number(e.currentTarget.dataset.id);
+  if(editingId === id) cancelarEdicion();
   registros = registros.filter(r => r.id !== id);
   guardar(registros);
   actualizarFiltroMes();
   renderTodo();
 }
+
+function onEditar(e){
+  const id = Number(e.currentTarget.dataset.id);
+  const r = registros.find(x => x.id === id);
+  if(!r) return;
+  editingId = id;
+  tipo = r.tipo;
+  pintarBotonTipo();
+  renderCategorias();
+  $('fecha').value = r.fecha;
+  $('monto').value = r.monto;
+  $('descripcion').value = r.descripcion;
+  if(tipo === 'ahorro'){
+    $('nombreBolsillo').value = r.bolsillo || r.categoria;
+    $('tasaEA').value = r.tasaEA || '';
+  } else {
+    $('categoria').value = r.categoria;
+  }
+  $('editingBanner').classList.remove('hidden');
+  $('btnAgregar').textContent = 'Guardar cambios';
+  setTab('agregar');
+}
+
+function cancelarEdicion(){
+  editingId = null;
+  $('editingBanner').classList.add('hidden');
+  $('btnAgregar').textContent = 'Agregar registro';
+  $('monto').value = '';
+  $('descripcion').value = '';
+  $('fecha').valueAsDate = new Date();
+  if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
+}
+$('btnCancelarEdicion').addEventListener('click', cancelarEdicion);
 
 function renderTodo(){
   renderInicio();
@@ -480,17 +536,27 @@ $('btnAgregar').addEventListener('click', () => {
   const fecha = $('fecha').value;
   if(!monto || monto <= 0 || !descripcion || !fecha) return;
 
+  let datosNuevos;
   if(tipo === 'ahorro'){
     const nombre = $('nombreBolsillo').value.trim();
     if(!nombre) return;
     const tasa = parseFloat($('tasaEA').value) || 0;
-    registros.push({ id: Date.now(), tipo, monto, descripcion, categoria: nombre, bolsillo: nombre, tasaEA: tasa, fecha });
-    $('nombreBolsillo').value = ''; $('tasaEA').value = '';
+    datosNuevos = { tipo, monto, descripcion, categoria: nombre, bolsillo: nombre, tasaEA: tasa, fecha };
   } else {
-    registros.push({ id: Date.now(), tipo, monto, descripcion, categoria: $('categoria').value, fecha });
+    datosNuevos = { tipo, monto, descripcion, categoria: $('categoria').value, fecha };
   }
+
+  if(editingId !== null){
+    const idx = registros.findIndex(r => r.id === editingId);
+    if(idx !== -1) registros[idx] = { ...registros[idx], ...datosNuevos };
+    cancelarEdicion();
+  } else {
+    registros.push({ id: Date.now(), ...datosNuevos });
+    if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
+    $('monto').value = ''; $('descripcion').value = '';
+  }
+
   guardar(registros);
-  $('monto').value = ''; $('descripcion').value = '';
   actualizarFiltroMes();
   renderTodo();
   setTab('inicio');
