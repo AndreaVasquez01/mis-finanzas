@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mis finanzas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --orange: #E8431A;
+    --orange-dark: #C2350F;
+    --bg: #FAFAF8;
+    --surface: #FFFFFF;
+    --border: #E5E2DB;
+    --text: #1C1C1C;
+    --text-2: #6B6B6B;
+    --text-3: #9B9A93;
+    --green: #1A7A4C;
+    --green-bg: #EAF5EE;
+    --red: #C0392B;
+    --red-bg: #FBEAE7;
+    --blue: #2A5DAC;
+    --blue-bg: #EAF0FA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 460px; margin: 0 auto; min-height: 100vh; background: var(--bg); padding-bottom: 48px; }
+  header { padding: 22px 18px 16px; }
+  header h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  header p { font-size: 12px; color: var(--text-3); margin: 3px 0 0; }
+  nav.tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  nav.tabs button {
+    flex: 1; padding: 12px 4px; font-family: inherit; font-size: 13px; font-weight: 500;
+    background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-3); cursor: pointer;
+  }
+  nav.tabs button.active { color: var(--orange); border-bottom-color: var(--orange); }
+  .month-row { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .month-row select { flex: 1; }
+  select, input {
+    font-family: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text); width: 100%;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--orange); }
+  main { padding: 18px; }
+  .hidden { display: none !important; }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 26px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px 14px; }
+  .kpi-card p.label { font-size: 11px; color: var(--text-2); margin: 0 0 4px; }
+  .kpi-card p.value { font-size: 18px; font-weight: 700; margin: 0; font-family: 'DM Mono', monospace; }
+  .section-label { font-size: 12px; font-weight: 500; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
+  .bar-row { margin-bottom: 10px; }
+  .bar-row .top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .bar-row .top .amt { color: var(--text-2); font-family: 'DM Mono', monospace; font-size: 12px; }
+  .bar-track { height: 6px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .empty { font-size: 13px; color: var(--text-3); padding: 6px 0 18px; }
+  .list { border-top: 1px solid var(--border); margin-bottom: 26px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .row .desc { font-size: 14px; font-weight: 500; }
+  .row .meta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .row .right { display: flex; align-items: center; gap: 8px; }
+  .row .amt { font-family: 'DM Mono', monospace; font-weight: 500; font-size: 14px; }
+  .amt.in { color: var(--green); }
+  .amt.gasto { color: var(--red); }
+  .amt.ahorro { color: var(--blue); }
+  .del { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .del:hover { color: var(--red); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-2); margin: 10px 0 18px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .search { position: relative; margin-bottom: 16px; }
+  .search input { padding-left: 32px; }
+  .search .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 14px; }
+  .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .type-toggle { display: flex; gap: 6px; margin-bottom: 14px; }
+  .type-toggle button {
+    flex: 1; padding: 9px 4px; font-family: inherit; font-size: 13px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer;
+  }
+  .type-toggle button.active { border-color: var(--orange); background: #FCEEE8; color: var(--orange-dark); font-weight: 500; }
+  .field-label { font-size: 11px; color: var(--text-2); margin: 0 0 5px; display: block; }
+  .gap { margin-bottom: 11px; }
+  .submit-btn {
+    width: 100%; padding: 12px; font-family: inherit; font-size: 14px; font-weight: 500;
+    background: var(--orange); color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 4px;
+  }
+  .submit-btn:hover { background: var(--orange-dark); }
+  .balance-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; text-align: center; margin-bottom: 20px; }
+  .balance-hero p.label { font-size: 12px; color: var(--text-2); margin: 0 0 6px; }
+  .balance-hero p.value { font-size: 30px; font-weight: 700; margin: 0; font-family: 'DM Mono', monospace; }
+  .chart-box { position: relative; height: 200px; margin-bottom: 20px; }
+  .secondary-btn {
+    width: 100%; padding: 11px; font-family: inherit; font-size: 13px; font-weight: 500;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; margin-bottom: 6px;
+  }
+  .secondary-btn:hover { border-color: var(--text-3); }
+  .hint { font-size: 11px; color: var(--text-3); margin: 0 0 22px; }
+  .ahorro-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 14px; }
+  .ahorro-kpis .kpi-card p.value { font-size: 14px; }
+  .analysis-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; font-size: 13.5px; line-height: 1.65; }
+  .analysis-card ul { margin: 0; padding-left: 18px; }
+  .analysis-card li { margin-bottom: 11px; }
+  .analysis-card li:last-child { margin-bottom: 0; }
+  .disclaimer { font-size: 11px; color: var(--text-3); margin: 9px 0 0; }
+  .save-status { font-size: 11px; color: var(--text-3); padding: 0 18px 4px; }
+  .save-status.err { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mis finanzas</h1>
+    <p>Control de ingresos, gastos y ahorro</p>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="inicio" class="active">🏠 Inicio</button>
+    <button data-tab="gastos">💸 Gastos</button>
+    <button data-tab="agregar">➕ Agregar</button>
+    <button data-tab="balance">📊 Balance</button>
+  </nav>
+
+  <div class="month-row">
+    <span style="color:var(--text-3); font-size:14px;">📅</span>
+    <select id="filtroMes"></select>
+  </div>
+  <p class="save-status" id="saveStatus"></p>
+
+  <main>
+    <!-- INICIO -->
+    <section id="panel-inicio">
+      <div class="kpi-grid">
+        <div class="kpi-card"><p class="label">💰 Ingresos</p><p class="value" style="color:var(--green);" id="kpiIngresos">$0</p></div>
+        <div class="kpi-card"><p class="label">💸 Gastos</p><p class="value" style="color:var(--red);" id="kpiGastos">$0</p></div>
+        <div class="kpi-card"><p class="label">🏦 Ahorro</p><p class="value" style="color:var(--blue);" id="kpiAhorro">$0</p></div>
+        <div class="kpi-card"><p class="label">⚖️ Balance libre</p><p class="value" id="kpiBalance">$0</p></div>
+      </div>
+
+      <p class="section-label">Top 5 categorías de gasto</p>
+      <div id="resumenCat"></div>
+
+      <p class="section-label">Últimos 5 gastos</p>
+      <div class="list" id="ultimos5"></div>
+
+      <p class="section-label">Tus bolsillos de ahorro</p>
+      <div id="resumenAhorro"></div>
+    </section>
+
+    <!-- GASTOS -->
+    <section id="panel-gastos" class="hidden">
+      <p class="section-label">Top 5 categorías de gasto</p>
+      <div class="chart-box"><canvas id="chartCat" role="img" aria-label="Gráfico de dona del top 5 de categorías de gasto"></canvas></div>
+      <div class="legend" id="legend"></div>
+      <div class="search">
+        <span class="icon">🔍</span>
+        <input id="buscar" type="text" placeholder="Buscar por descripción o categoría (ej. Rappi, licor)" />
+      </div>
+      <p class="section-label">Todos los gastos <span id="totalFiltrado" style="color:var(--text); text-transform:none; font-weight:400;"></span></p>
+      <div class="list" id="listaGastos"></div>
+    </section>
+
+    <!-- AGREGAR -->
+    <section id="panel-agregar" class="hidden">
+      <div class="form-card">
+        <div class="type-toggle">
+          <button id="btnGasto" class="active">💸 Gasto</button>
+          <button id="btnIngreso">💰 Ingreso</button>
+          <button id="btnAhorro">🏦 Ahorro</button>
+        </div>
+        <span class="field-label">Fecha</span>
+        <input type="date" id="fecha" class="gap" />
+        <input type="number" id="monto" placeholder="Monto" min="0" class="gap" />
+        <input type="text" id="descripcion" placeholder="Descripción (ej. mercado de la semana)" class="gap" />
+        <select id="categoria" class="gap"></select>
+        <div id="camposAhorro" class="hidden">
+          <input type="text" id="nombreBolsillo" placeholder="Nombre del bolsillo (ej. Bolsillo Nu)" class="gap" />
+          <input type="number" id="tasaEA" placeholder="Tasa EA % (ej. 9)" min="0" step="0.1" class="gap" />
+        </div>
+        <button class="submit-btn" id="btnAgregar">Agregar registro</button>
+      </div>
+    </section>
+
+    <!-- BALANCE -->
+    <section id="panel-balance" class="hidden">
+      <div class="balance-hero">
+        <p class="label">⚖️ Balance libre del mes</p>
+        <p class="value" id="balanceGrande">$0</p>
+      </div>
+      <div class="chart-box"><canvas id="chartBalance" role="img" aria-label="Gráfico de barras de ingresos, gastos y ahorro"></canvas></div>
+      <button class="secondary-btn" id="btnDescargar">⬇ Descargar reporte (<span id="descargaEtiqueta">todos los meses</span>)</button>
+      <p class="hint">Usa el selector de mes de arriba para descargar solo un mes, o déjalo en "Todos los meses" para el histórico completo.</p>
+
+      <p class="section-label">Rendimiento de tus ahorros</p>
+      <div id="rendimientoAhorro" style="margin-bottom:22px;"></div>
+
+      <p class="section-label">Análisis ejecutivo</p>
+      <div class="analysis-card" id="analisisEjecutivo"></div>
+      <p class="disclaimer">Análisis general basado en tus propios datos. No es asesoría financiera profesional ni una recomendación de inversión personalizada.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+const CAT_GASTOS = ["🛒 Comida (mercado)","🚗 Transporte","🏠 Vivienda (arriendo)","🔌 Servicios","💊 Salud","🧒 Joaquín (hijo)","🥃 Licor","🍽️ Comida fines de semana","🎉 Salidas ocio","🛵 Rappi","🏢 Cuota apto","🛍️ Compras","📦 Otros"];
+const CAT_INGRESOS = ["💼 Salario","➕ Extras"];
+const CAT_DISCRECIONAL = ["🥃 Licor","🍽️ Comida fines de semana","🎉 Salidas ocio","🛵 Rappi","🛍️ Compras"];
+const COLORS = ['#E8431A','#1A7A4C','#2A5DAC','#C9A227','#7C5CBF','#C0392B','#B8568A','#D9863E','#5A8FBF','#A8763E','#4D9E8C','#8B8B7A','#6B6B6B'];
+const TEAL = ['#2A5DAC','#1A7A4C','#0F5C40','#15406B'];
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const STORAGE_KEY = 'mis-finanzas-registros-v1';
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(Math.round(n||0));
+const ymKey = (f) => f ? f.slice(0,7) : '';
+const ymLabel = (k) => { const [y,m] = k.split('-'); return MESES[parseInt(m,10)-1] + ' ' + y; };
+
+function cargar(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e){ return []; }
+}
+function guardar(registros){
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
+    $('saveStatus').textContent = '';
+    $('saveStatus').classList.remove('err');
+  } catch(e){
+    $('saveStatus').textContent = 'No se pudo guardar el último cambio en este navegador.';
+    $('saveStatus').classList.add('err');
+  }
+}
+
+let registros = cargar();
+let tipo = 'gasto';
+let mesActivo = 'todos';
+let busqueda = '';
+let chartCat, chartBal;
+
+function setTab(name){
+  ['inicio','gastos','agregar','balance'].forEach(t => {
+    $('panel-'+t).classList.toggle('hidden', t !== name);
+  });
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  if(name === 'gastos') renderGastosTab();
+  if(name === 'balance') renderBalanceTab();
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+function pintarBotonTipo(){
+  $('btnGasto').classList.toggle('active', tipo==='gasto');
+  $('btnIngreso').classList.toggle('active', tipo==='ingreso');
+  $('btnAhorro').classList.toggle('active', tipo==='ahorro');
+}
+function renderCategorias(){
+  if(tipo === 'ahorro'){
+    $('categoria').classList.add('hidden');
+    $('camposAhorro').classList.remove('hidden');
+    return;
+  }
+  $('categoria').classList.remove('hidden');
+  $('camposAhorro').classList.add('hidden');
+  const cats = tipo === 'gasto' ? CAT_GASTOS : CAT_INGRESOS;
+  $('categoria').innerHTML = cats.map(c => '<option value="'+c+'">'+c+'</option>').join('');
+}
+$('btnGasto').addEventListener('click', () => { tipo='gasto'; pintarBotonTipo(); renderCategorias(); });
+$('btnIngreso').addEventListener('click', () => { tipo='ingreso'; pintarBotonTipo(); renderCategorias(); });
+$('btnAhorro').addEventListener('click', () => { tipo='ahorro'; pintarBotonTipo(); renderCategorias(); });
+renderCategorias();
+$('fecha').valueAsDate = new Date();
+
+function actualizarFiltroMes(){
+  const keys = Array.from(new Set(registros.map(r => ymKey(r.fecha)).filter(Boolean))).sort().reverse();
+  const actual = mesActivo;
+  $('filtroMes').innerHTML = '<option value="todos">Todos los meses</option>' + keys.map(k => '<option value="'+k+'">'+ymLabel(k)+'</option>').join('');
+  if(keys.includes(actual)) $('filtroMes').value = actual; else mesActivo = 'todos';
+  $('descargaEtiqueta').textContent = mesActivo === 'todos' ? 'todos los meses' : ymLabel(mesActivo);
+}
+$('filtroMes').addEventListener('change', () => {
+  mesActivo = $('filtroMes').value;
+  $('descargaEtiqueta').textContent = mesActivo === 'todos' ? 'todos los meses' : ymLabel(mesActivo);
+  renderTodo();
+});
+$('buscar').addEventListener('input', () => { busqueda = $('buscar').value.toLowerCase(); renderGastosTab(); });
+
+function registrosFiltrados(){
+  return mesActivo === 'todos' ? registros : registros.filter(r => ymKey(r.fecha) === mesActivo);
+}
+function gastosVisibles(){
+  let g = registrosFiltrados().filter(r => r.tipo === 'gasto');
+  if(busqueda) g = g.filter(r => r.descripcion.toLowerCase().includes(busqueda) || r.categoria.toLowerCase().includes(busqueda));
+  return g;
+}
+function getTotales(){
+  const r = registrosFiltrados();
+  const ingresos = r.filter(x => x.tipo==='ingreso').reduce((a,x)=>a+x.monto,0);
+  const gastos = r.filter(x => x.tipo==='gasto').reduce((a,x)=>a+x.monto,0);
+  const ahorro = r.filter(x => x.tipo==='ahorro').reduce((a,x)=>a+x.monto,0);
+  return { ingresos, gastos, ahorro, balance: ingresos-gastos-ahorro };
+}
+function top5(porCatObj){ return Object.entries(porCatObj).sort((a,b)=>b[1]-a[1]).slice(0,5); }
+function porCategoriaInicio(){
+  const p = {}; registrosFiltrados().filter(r=>r.tipo==='gasto').forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
+}
+function porCategoriaGastos(){
+  const p = {}; gastosVisibles().forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
+}
+function getBolsillos(){
+  const b = {};
+  registros.filter(r=>r.tipo==='ahorro').forEach(r=>{
+    const n = r.bolsillo || r.categoria;
+    if(!b[n]) b[n] = { monto:0, tasaEA:r.tasaEA||0 };
+    b[n].monto += r.monto;
+    if(r.tasaEA) b[n].tasaEA = r.tasaEA;
+  });
+  return b;
+}
+function rowHTML(r, conBorrar){
+  const cls = r.tipo==='ingreso' ? 'in' : r.tipo==='ahorro' ? 'ahorro' : 'gasto';
+  const signo = r.tipo==='ingreso' ? '+' : '-';
+  return '<div class="row"><div><p class="desc">'+r.descripcion+'</p><p class="meta">'+r.categoria+' · '+r.fecha+'</p></div>'+
+    '<div class="right"><span class="amt '+cls+'">'+signo+fmt(r.monto)+'</span>'+
+    (conBorrar ? '<button class="del" data-id="'+r.id+'" aria-label="Eliminar">✕</button>' : '')+'</div></div>';
+}
+
+function renderInicio(){
+  const t = getTotales();
+  $('kpiIngresos').textContent = fmt(t.ingresos);
+  $('kpiGastos').textContent = fmt(t.gastos);
+  $('kpiAhorro').textContent = fmt(t.ahorro);
+  $('kpiBalance').textContent = fmt(t.balance);
+  $('kpiBalance').style.color = t.balance >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const top = top5(porCategoriaInicio());
+  const total = top.reduce((a,e)=>a+e[1],0);
+  $('resumenCat').innerHTML = top.length ? top.map(([cat,val],i) => {
+    const pct = Math.round(val/total*100);
+    return '<div class="bar-row"><div class="top"><span>'+cat+'</span><span class="amt">'+fmt(val)+' · '+pct+'%</span></div>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%; background:'+COLORS[i%COLORS.length]+';"></div></div></div>';
+  }).join('') + '<div style="height:8px;"></div>' : '<p class="empty">Sin gastos todavía.</p>';
+
+  const ultimos = registrosFiltrados().filter(r=>r.tipo==='gasto').slice(-5).reverse();
+  $('ultimos5').innerHTML = ultimos.length ? ultimos.map(r=>rowHTML(r,false)).join('') : '<p class="empty">Agrega tu primer gasto en la pestaña Agregar.</p>';
+
+  const bolsillos = getBolsillos();
+  const nombres = Object.keys(bolsillos);
+  $('resumenAhorro').innerHTML = nombres.length ? nombres.map(n => {
+    const b = bolsillos[n];
+    return '<div class="row"><span style="font-size:14px;">🏦 '+n+' <span style="color:var(--text-3); font-size:12px;">· '+b.tasaEA+'% EA</span></span><span class="amt" style="color:var(--blue);">'+fmt(b.monto)+'</span></div>';
+  }).join('') : '<p class="empty">Sin bolsillos registrados.</p>';
+}
+
+function renderGastosTab(){
+  const top = top5(porCategoriaGastos());
+  const labels = top.map(e=>e[0]);
+  const data = top.map(e=>e[1]);
+  const total = data.reduce((a,b)=>a+b,0);
+  const colors = labels.map((_,i)=>COLORS[i%COLORS.length]);
+
+  $('legend').innerHTML = labels.length ? labels.map((l,i) => {
+    const pct = Math.round(data[i]/total*100);
+    return '<span><span class="dot" style="background:'+colors[i]+';"></span>'+l+' '+pct+'%</span>';
+  }).join('') : '<span>Sin resultados para mostrar</span>';
+
+  if(chartCat) chartCat.destroy();
+  chartCat = new Chart($('chartCat'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#FAFAF8' }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+  });
+
+  const gastos = gastosVisibles();
+  const totalB = gastos.reduce((a,r)=>a+r.monto,0);
+  $('totalFiltrado').textContent = gastos.length ? '· ' + fmt(totalB) : '';
+  $('listaGastos').innerHTML = gastos.length ? gastos.slice().reverse().map(r=>rowHTML(r,true)).join('') : '<p class="empty">No hay gastos que coincidan.</p>';
+  document.querySelectorAll('#listaGastos .del').forEach(btn => btn.addEventListener('click', onBorrar));
+}
+
+function renderBalanceTab(){
+  const t = getTotales();
+  $('balanceGrande').textContent = fmt(t.balance);
+  $('balanceGrande').style.color = t.balance >= 0 ? 'var(--green)' : 'var(--red)';
+
+  if(chartBal) chartBal.destroy();
+  chartBal = new Chart($('chartBalance'), {
+    type: 'bar',
+    data: { labels: ['Ingresos','Gastos','Ahorro'], datasets: [{ data: [t.ingresos, t.gastos, t.ahorro], backgroundColor: ['#1A7A4C','#C0392B','#2A5DAC'], borderRadius: 4 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
+  });
+
+  const bolsillos = getBolsillos();
+  const nombres = Object.keys(bolsillos);
+  const totalAhorrado = nombres.reduce((a,n)=>a+bolsillos[n].monto,0);
+  if(!nombres.length){
+    $('rendimientoAhorro').innerHTML = '<p class="empty">Aún no tienes bolsillos de ahorro registrados.</p>';
+  } else {
+    const tasaProm = nombres.reduce((a,n)=>a+bolsillos[n].monto*bolsillos[n].tasaEA,0)/totalAhorrado;
+    const rendimientoAnual = nombres.reduce((a,n)=>a+bolsillos[n].monto*(bolsillos[n].tasaEA/100),0);
+    let html = '<div class="ahorro-kpis">';
+    html += '<div class="kpi-card"><p class="label">Total ahorrado</p><p class="value">'+fmt(totalAhorrado)+'</p></div>';
+    html += '<div class="kpi-card"><p class="label">Tasa ponderada</p><p class="value">'+tasaProm.toFixed(1)+'% EA</p></div>';
+    html += '<div class="kpi-card"><p class="label">Rendim. est./año</p><p class="value" style="color:var(--green);">+'+fmt(rendimientoAnual)+'</p></div>';
+    html += '</div>';
+    html += nombres.map((n,i) => {
+      const b = bolsillos[n];
+      const pct = Math.round(b.monto/totalAhorrado*100);
+      return '<div class="bar-row"><div class="top"><span>🏦 '+n+' · '+b.tasaEA+'% EA</span><span class="amt">'+fmt(b.monto)+' · '+pct+'%</span></div>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%; background:'+TEAL[i%TEAL.length]+';"></div></div></div>';
+    }).join('');
+    $('rendimientoAhorro').innerHTML = html;
+  }
+
+  const bullets = [];
+  if(t.ingresos > 0){
+    const tasaAhorroPct = (t.ahorro/t.ingresos)*100;
+    if(tasaAhorroPct < 20){
+      const faltante = t.ingresos*0.20 - t.ahorro;
+      bullets.push('Tu tasa de ahorro este periodo es del <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos. Una meta común es 15–20%; te faltarían cerca de <strong>'+fmt(faltante)+'</strong> para llegar a ese rango.');
+    } else {
+      bullets.push('Tu tasa de ahorro este periodo es del <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos, por encima del rango de referencia de 15–20%. Vas bien.');
+    }
+  }
+  const porCat = porCategoriaInicio();
+  const discrecional = CAT_DISCRECIONAL.reduce((a,c)=>a+(porCat[c]||0),0);
+  if(t.gastos > 0 && discrecional > 0){
+    const pct = (discrecional/t.gastos)*100;
+    bullets.push('Los gastos discrecionales (Rappi, licor, salidas, comida de fin de semana y compras) suman <strong>'+fmt(discrecional)+'</strong>, el <strong>'+pct.toFixed(0)+'%</strong> de tus gastos. Reducirlos a la mitad liberaría cerca de <strong>'+fmt(discrecional/2)+'</strong> al mes para ahorro o inversión.');
+  }
+  if(nombres.length){
+    const tasaProm = nombres.reduce((a,n)=>a+bolsillos[n].monto*bolsillos[n].tasaEA,0)/totalAhorrado;
+    bullets.push('Tu tasa promedio de ahorro (<strong>'+tasaProm.toFixed(1)+'% EA</strong>) es razonable para fondos líquidos en bolsillos digitales, que sirven bien como reserva de emergencia (idealmente 3 a 6 meses de gastos fijos).');
+    bullets.push('Para el excedente que no necesites de forma inmediata, las alternativas típicas en Colombia para comparar son: <strong>CDT a plazo fijo</strong> (tasa fija, normalmente mayor si dejas el dinero quieto por meses), <strong>Fondos de Inversión Colectiva (FIC)</strong> de riesgo moderado con liquidez diaria, y <strong>fondos indexados o ETFs</strong> para metas de largo plazo, con mayor volatilidad pero retorno histórico superior. La mezcla depende de tu horizonte y tolerancia al riesgo.');
+  } else {
+    bullets.push('Aún no tienes bolsillos de ahorro registrados este periodo. Empieza por separar un fondo de emergencia líquido (3-6 meses de gastos fijos) antes de considerar instrumentos de mayor plazo.');
+  }
+  $('analisisEjecutivo').innerHTML = '<ul>'+bullets.map(b=>'<li>'+b+'</li>').join('')+'</ul>';
+}
+
+function onBorrar(e){
+  const id = Number(e.currentTarget.dataset.id);
+  registros = registros.filter(r => r.id !== id);
+  guardar(registros);
+  actualizarFiltroMes();
+  renderTodo();
+}
+
+function renderTodo(){
+  renderInicio();
+  if(!$('panel-gastos').classList.contains('hidden')) renderGastosTab();
+  if(!$('panel-balance').classList.contains('hidden')) renderBalanceTab();
+}
+
+function csvEscape(v){
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+$('btnDescargar').addEventListener('click', () => {
+  const filas = [['Tipo','Fecha','Categoría','Descripción','Monto','TasaEA']];
+  registrosFiltrados().forEach(r => filas.push([r.tipo, r.fecha, r.categoria, r.descripcion, r.monto, r.tasaEA||'']));
+  const csv = filas.map(f => f.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'finanzas_'+(mesActivo==='todos'?'todos':mesActivo)+'.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('btnAgregar').addEventListener('click', () => {
+  const monto = parseFloat($('monto').value);
+  const descripcion = $('descripcion').value.trim();
+  const fecha = $('fecha').value;
+  if(!monto || monto <= 0 || !descripcion || !fecha) return;
+
+  if(tipo === 'ahorro'){
+    const nombre = $('nombreBolsillo').value.trim();
+    if(!nombre) return;
+    const tasa = parseFloat($('tasaEA').value) || 0;
+    registros.push({ id: Date.now(), tipo, monto, descripcion, categoria: nombre, bolsillo: nombre, tasaEA: tasa, fecha });
+    $('nombreBolsillo').value = ''; $('tasaEA').value = '';
+  } else {
+    registros.push({ id: Date.now(), tipo, monto, descripcion, categoria: $('categoria').value, fecha });
+  }
+  guardar(registros);
+  $('monto').value = ''; $('descripcion').value = '';
+  actualizarFiltroMes();
+  renderTodo();
+  setTab('inicio');
+});
+
+actualizarFiltroMes();
+renderTodo();
+</script>
+</body>
+</html>
