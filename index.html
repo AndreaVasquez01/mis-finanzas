@@ -46,6 +46,7 @@
     background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-3); cursor: pointer;
   }
   nav.tabs button.active { color: var(--orange); border-bottom-color: var(--orange); }
+  nav.tabs button:disabled { cursor: not-allowed; }
   .month-row { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
   .month-row select { flex: 1; }
   select, input {
@@ -133,6 +134,10 @@
   .login-error { background: var(--red-bg); color: var(--red); font-size: 12.5px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
   .login-info { background: var(--green-bg); color: var(--green); font-size: 12.5px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
   #loadingScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
+  .password-field { position: relative; }
+  .password-field input { padding-right: 40px; }
+  .password-field button { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; padding: 6px 8px; color: var(--text-3); }
+  .password-field button:hover { color: var(--text-2); }
 </style>
 </head>
 <body>
@@ -141,18 +146,13 @@
 
 <!-- LOGIN -->
 <div class="login-wrap hidden" id="loginScreen">
-  <div class="login-card">
+  <div class="login-card" id="pedirCorreoCard">
     <h1>Mis finanzas</h1>
-    <p class="sub">Inicia sesión para acceder a tus datos desde cualquier dispositivo.</p>
-    <div class="login-toggle">
-      <button id="toggleLogin" class="active">Iniciar sesión</button>
-      <button id="toggleSignup">Crear cuenta</button>
-    </div>
+    <p class="sub">Escribe tu correo y te enviamos un enlace para entrar. Sin contraseña que recordar.</p>
     <div id="loginError" class="login-error hidden"></div>
     <div id="loginInfo" class="login-info hidden"></div>
     <input type="email" id="loginEmail" placeholder="Correo electrónico" class="gap" autocomplete="email" />
-    <input type="password" id="loginPassword" placeholder="Contraseña" class="gap" autocomplete="current-password" />
-    <button class="submit-btn" id="btnLoginSubmit">Iniciar sesión</button>
+    <button class="submit-btn" id="btnLoginSubmit">Enviar enlace de acceso</button>
   </div>
 </div>
 
@@ -160,11 +160,16 @@
 <div class="wrap hidden" id="appWrap">
   <header>
     <div>
-      <h1>Mis finanzas</h1>
+      <h1>Mis finanzas <span class="hidden" id="adminBadge" style="font-size:10px; background:var(--orange); color:#fff; padding:2px 6px; border-radius:5px; vertical-align:middle;">ADMIN</span></h1>
       <p id="userEmailLabel">Control de ingresos, gastos y ahorro</p>
     </div>
     <button class="signout-btn" id="btnSignOut">Cerrar sesión</button>
   </header>
+
+  <div class="month-row hidden" id="adminSelectorRow" style="border-bottom:none; padding-bottom:0;">
+    <span style="color:var(--text-3); font-size:14px;">🛡️</span>
+    <select id="selectorAdmin"></select>
+  </div>
 
   <nav class="tabs">
     <button data-tab="inicio" class="active">🏠 Inicio</button>
@@ -219,19 +224,57 @@
         <button id="btnCancelarEdicion">Cancelar</button>
       </div>
       <div class="form-card">
-        <div class="type-toggle">
-          <button id="btnGasto" class="active">💸 Gasto</button>
-          <button id="btnIngreso">💰 Ingreso</button>
-          <button id="btnAhorro">🏦 Ahorro</button>
+        <div class="type-toggle" style="flex-wrap:wrap;">
+          <button id="btnGasto" class="active" style="min-width:47%;">💸 Gasto</button>
+          <button id="btnIngreso" style="min-width:47%;">💰 Ingreso</button>
+          <button id="btnAhorro" style="min-width:47%;">🏦 Ahorro</button>
+          <button id="btnPagoTC" style="min-width:47%;">💳 Pago TC</button>
         </div>
         <span class="field-label">Fecha</span>
         <input type="date" id="fecha" class="gap" />
         <input type="number" id="monto" placeholder="Monto" min="0" class="gap" />
+        <div style="display:flex; gap:8px;" class="gap">
+          <select id="moneda" style="flex:1;">
+            <option value="COP">🇨🇴 COP</option>
+            <option value="USD">🇺🇸 USD</option>
+            <option value="AUD">🇦🇺 AUD</option>
+          </select>
+          <input type="number" id="tasaCambio" placeholder="Tasa de cambio a COP" min="0" step="0.01" style="flex:1.4;" class="hidden" />
+        </div>
+        <p id="avisoTasaCambio" class="hint hidden" style="margin:-6px 0 11px; color:var(--red);">Indica cuántos pesos vale 1 unidad de esa moneda hoy, para poder sumarlo bien en tus totales.</p>
         <input type="text" id="descripcion" placeholder="Descripción (ej. mercado de la semana)" class="gap" />
         <select id="categoria" class="gap"></select>
         <div id="camposAhorro" class="hidden">
-          <input type="text" id="nombreBolsillo" placeholder="Nombre del bolsillo (ej. Bolsillo Nu)" class="gap" />
-          <input type="number" id="tasaEA" placeholder="Tasa EA % (ej. 9)" min="0" step="0.1" class="gap" />
+          <div class="type-toggle" style="margin-bottom:11px; flex-wrap:wrap;">
+            <button type="button" id="btnAporte" class="active" style="min-width:31%;">➕ Aporte</button>
+            <button type="button" id="btnRetiro" style="min-width:31%;">➖ Retiro</button>
+            <button type="button" id="btnTransferencia" style="min-width:31%;">🔄 Transferir</button>
+          </div>
+          <div id="camposAhorroSimple">
+            <input type="text" id="nombreBolsillo" placeholder="Nombre del bolsillo (ej. Bolsillo Nu)" class="gap" />
+            <input type="number" id="tasaEA" placeholder="Tasa EA % (ej. 9)" min="0" step="0.1" class="gap" />
+          </div>
+          <div id="camposTransferencia" class="hidden">
+            <span class="field-label">Desde</span>
+            <select id="bolsilloOrigen" class="gap"></select>
+            <span class="field-label">Hacia</span>
+            <input type="text" id="bolsilloDestino" placeholder="Bolsillo destino (nuevo o existente)" class="gap" />
+            <input type="number" id="tasaEADestino" placeholder="Tasa EA % del destino (si es nuevo)" min="0" step="0.1" class="gap" />
+          </div>
+        </div>
+        <div id="camposMetodoPago" class="gap">
+          <div class="type-toggle" style="margin-bottom:11px;">
+            <button type="button" id="btnEfectivo" class="active">💵 Efectivo</button>
+            <button type="button" id="btnTarjeta">💳 Tarjeta de crédito</button>
+          </div>
+          <div id="camposTarjeta" class="hidden">
+            <input type="text" id="nombreTarjeta" placeholder="Banco / tarjeta (ej. Bancolombia Visa)" class="gap" />
+            <input type="number" id="numCuotas" placeholder="Número de cuotas (ej. 3)" min="1" step="1" class="gap" />
+          </div>
+        </div>
+        <div id="camposPagoTC" class="hidden gap">
+          <input type="text" id="tarjetaPago" placeholder="Banco / tarjeta que estás pagando (ej. Bancolombia Visa)" class="gap" />
+          <p class="hint" style="margin:0 0 4px;">Este pago se descuenta de la deuda de esa tarjeta.</p>
         </div>
         <button class="submit-btn" id="btnAgregar">Agregar registro</button>
       </div>
@@ -254,7 +297,22 @@
       <div class="analysis-card" id="analisisEjecutivo"></div>
       <p class="disclaimer">Análisis general basado en tus propios datos. No es asesoría financiera profesional ni una recomendación de inversión personalizada.</p>
 
-      <p class="section-label" style="margin-top:26px;">Todos los movimientos</p>
+      <p class="section-label" style="margin-top:26px;">Deuda de tarjetas de crédito</p>
+      <div id="resumenTarjetas" style="margin-bottom:16px;"></div>
+
+      <div class="form-card" style="margin-bottom:26px;">
+        <p class="field-label" style="margin-bottom:10px;">Configurar cupo y tasa de una tarjeta</p>
+        <input type="text" id="cfgNombreTarjeta" placeholder="Banco / tarjeta (ej. Bancolombia Visa)" class="gap" />
+        <input type="number" id="cfgCupo" placeholder="Cupo total (ej. 5000000)" min="0" class="gap" />
+        <input type="number" id="cfgTasa" placeholder="Tasa de interés EA % (ej. 28.5)" min="0" step="0.1" class="gap" />
+        <div style="display:flex; gap:8px;" class="gap">
+          <input type="number" id="cfgDiaCorte" placeholder="Día de corte (ej. 15)" min="1" max="31" />
+          <input type="number" id="cfgDiaPago" placeholder="Día de pago (ej. 5)" min="1" max="31" />
+        </div>
+        <button class="secondary-btn" id="btnGuardarTarjeta" style="margin-bottom:0;">Guardar tarjeta</button>
+      </div>
+
+      <p class="section-label">Todos los movimientos</p>
       <div class="list" id="listaMovimientos"></div>
     </section>
   </main>
@@ -276,23 +334,48 @@ const TEAL = ['#2A5DAC','#1A7A4C','#0F5C40','#15406B'];
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
 const $ = (id) => document.getElementById(id);
+const MONEDA_LOCALE = { COP: 'es-CO', USD: 'en-US', AUD: 'en-AU' };
 const fmt = (n) => new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(Math.round(n||0));
+function fmtEnMoneda(n, moneda){
+  return new Intl.NumberFormat(MONEDA_LOCALE[moneda] || 'es-CO', {style:'currency', currency: moneda || 'COP', maximumFractionDigits: moneda === 'COP' ? 0 : 2}).format(n||0);
+}
+function montoCOP(r){
+  if(!r.moneda || r.moneda === 'COP') return r.monto;
+  return r.monto * (r.tasaCambio || 1);
+}
 const ymKey = (f) => f ? f.slice(0,7) : '';
 const ymLabel = (k) => { const [y,m] = k.split('-'); return MESES[parseInt(m,10)-1] + ' ' + y; };
+function mesAnterior(key){
+  const [y,m] = key.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function porCategoriaEnMes(key){
+  const p = {};
+  registros.filter(r => r.tipo==='gasto' && ymKey(r.fecha)===key).forEach(r => { p[r.categoria] = (p[r.categoria]||0) + montoCOP(r); });
+  return p;
+}
 
 let registros = [];
+let tarjetasConfig = {};
 let tipo = 'gasto';
+let metodoPago = 'efectivo';
+let movimientoAhorro = 'aporte';
 let mesActivo = 'todos';
 let busqueda = '';
 let editingId = null;
 let chartCat, chartBal;
 let currentUser = null;
+let isAdmin = false;
+let adminSeleccion = 'propio'; // 'propio' | 'todos' | user_id específico
+let profiles = [];
 
 // ---------- MAPEO DB <-> APP ----------
 // La tabla en Supabase usa tasa_ea (snake_case); la app usa tasaEA
 function fromDB(row){
   return {
     id: row.id,
+    userId: row.user_id,
     tipo: row.tipo,
     monto: Number(row.monto),
     descripcion: row.descripcion,
@@ -300,6 +383,12 @@ function fromDB(row){
     bolsillo: row.bolsillo,
     tasaEA: row.tasa_ea != null ? Number(row.tasa_ea) : 0,
     fecha: row.fecha,
+    metodoPago: row.metodo_pago || 'efectivo',
+    tarjeta: row.tarjeta || null,
+    cuotas: row.cuotas || null,
+    moneda: row.moneda || 'COP',
+    tasaCambio: row.tasa_cambio != null ? Number(row.tasa_cambio) : 1,
+    movimientoAhorro: row.movimiento_ahorro || 'aporte',
   };
 }
 function toDB(datos){
@@ -311,13 +400,17 @@ function toDB(datos){
     bolsillo: datos.bolsillo || null,
     tasa_ea: datos.tasaEA || null,
     fecha: datos.fecha,
+    metodo_pago: datos.metodoPago || 'efectivo',
+    tarjeta: datos.tarjeta || null,
+    cuotas: datos.cuotas || null,
+    moneda: datos.moneda || 'COP',
+    tasa_cambio: datos.moneda && datos.moneda !== 'COP' ? (datos.tasaCambio || 1) : 1,
+    movimiento_ahorro: datos.movimientoAhorro || 'aporte',
     user_id: currentUser.id,
   };
 }
 
-// ---------- AUTENTICACIÓN ----------
-let modoLogin = 'login'; // 'login' | 'signup'
-
+// ---------- AUTENTICACIÓN (sin contraseña, con enlace al correo) ----------
 function mostrarErrorLogin(msg){
   $('loginError').textContent = msg;
   $('loginError').classList.remove('hidden');
@@ -328,56 +421,25 @@ function mostrarInfoLogin(msg){
   $('loginInfo').classList.remove('hidden');
   $('loginError').classList.add('hidden');
 }
-function limpiarMensajesLogin(){
-  $('loginError').classList.add('hidden');
-  $('loginInfo').classList.add('hidden');
-}
-
-$('toggleLogin').addEventListener('click', () => {
-  modoLogin = 'login';
-  $('toggleLogin').classList.add('active');
-  $('toggleSignup').classList.remove('active');
-  $('btnLoginSubmit').textContent = 'Iniciar sesión';
-  limpiarMensajesLogin();
-});
-$('toggleSignup').addEventListener('click', () => {
-  modoLogin = 'signup';
-  $('toggleSignup').classList.add('active');
-  $('toggleLogin').classList.remove('active');
-  $('btnLoginSubmit').textContent = 'Crear cuenta';
-  limpiarMensajesLogin();
-});
 
 $('btnLoginSubmit').addEventListener('click', async () => {
   const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
-  if(!email || !password){ mostrarErrorLogin('Completa correo y contraseña.'); return; }
+  if(!email){ mostrarErrorLogin('Escribe tu correo.'); return; }
   $('btnLoginSubmit').disabled = true;
-  limpiarMensajesLogin();
-
   try {
-    if(modoLogin === 'login'){
-      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-      if(error) throw error;
-      // onAuthStateChange se encarga de mostrar la app
-    } else {
-      const { error } = await supabaseClient.auth.signUp({ email, password });
-      if(error) throw error;
-      mostrarInfoLogin('Cuenta creada. Iniciando sesión…');
-    }
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href, shouldCreateUser: true }
+    });
+    if(error) throw error;
+    mostrarInfoLogin('Listo. Revisa tu correo ('+email+') y abre el enlace para entrar. Puedes cerrar esta pestaña.');
+    $('loginEmail').value = '';
   } catch(e){
-    mostrarErrorLogin(traducirErrorAuth(e.message));
+    mostrarErrorLogin(e.message);
   } finally {
     $('btnLoginSubmit').disabled = false;
   }
 });
-
-function traducirErrorAuth(msg){
-  if(/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
-  if(/already registered/i.test(msg)) return 'Ese correo ya tiene una cuenta. Inicia sesión en vez de crear una nueva.';
-  if(/Password should be/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
-  return msg;
-}
 
 $('btnSignOut').addEventListener('click', async () => {
   await supabaseClient.auth.signOut();
@@ -389,11 +451,33 @@ async function mostrarApp(user){
   $('loginScreen').classList.add('hidden');
   $('appWrap').classList.remove('hidden');
   $('userEmailLabel').textContent = user.email;
+  await verificarAdmin();
+  if(isAdmin){
+    $('adminBadge').classList.remove('hidden');
+    $('adminSelectorRow').classList.remove('hidden');
+    actualizarSelectorAdmin();
+  }
+  actualizarDisponibilidadAgregar();
   await cargarYRenderizarTodo();
 }
 
+$('selectorAdmin')?.addEventListener('change', async () => {
+  adminSeleccion = $('selectorAdmin').value;
+  mesActivo = 'todos';
+  mesFiltroInicializado = false;
+  actualizarDisponibilidadAgregar();
+  await cargarYRenderizarTodo();
+});
+
 function mostrarLogin(){
   currentUser = null;
+  isAdmin = false;
+  adminSeleccion = 'propio';
+  profiles = [];
+  mesActivo = 'todos';
+  mesFiltroInicializado = false;
+  $('adminBadge').classList.add('hidden');
+  $('adminSelectorRow').classList.add('hidden');
   $('loadingScreen').classList.add('hidden');
   $('appWrap').classList.add('hidden');
   $('loginScreen').classList.remove('hidden');
@@ -427,7 +511,38 @@ async function cargarRegistros(){
     return [];
   }
   mostrarEstadoGuardado(true);
-  return data.map(fromDB);
+  let rows = data;
+  // Con RLS, un admin recibe filas de todos los usuarios; un usuario normal solo las suyas.
+  if(isAdmin){
+    if(adminSeleccion === 'propio') rows = rows.filter(r => r.user_id === currentUser.id);
+    else if(adminSeleccion !== 'todos') rows = rows.filter(r => r.user_id === adminSeleccion);
+    // 'todos' deja todas las filas tal cual
+  }
+  return rows.map(fromDB);
+}
+
+async function verificarAdmin(){
+  const { data } = await supabaseClient.from('admins').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+  isAdmin = !!data;
+  if(isAdmin){
+    const { data: perfilesData } = await supabaseClient.from('profiles').select('id,email');
+    profiles = perfilesData || [];
+  }
+}
+
+async function cargarTarjetasConfig(){
+  const { data, error } = await supabaseClient.from('tarjetas_config').select('*');
+  if(error) return {};
+  let rows = data;
+  if(isAdmin){
+    if(adminSeleccion === 'propio') rows = rows.filter(t => t.user_id === currentUser.id);
+    else if(adminSeleccion !== 'todos') rows = rows.filter(t => t.user_id === adminSeleccion);
+  }
+  const map = {};
+  rows.forEach(t => {
+    map[t.nombre] = { cupo: t.cupo != null ? Number(t.cupo) : null, tasaInteres: t.tasa_interes != null ? Number(t.tasa_interes) : null, diaCorte: t.dia_corte, diaPago: t.dia_pago };
+  });
+  return map;
 }
 
 function mostrarEstadoGuardado(ok){
@@ -440,14 +555,54 @@ function mostrarEstadoGuardado(ok){
   }
 }
 
+function actualizarSelectorAdmin(){
+  if(!isAdmin) return;
+  const sel = $('selectorAdmin');
+  sel.innerHTML = '<option value="propio">👤 Mis datos</option><option value="todos">🛡️ Todos los usuarios</option>' +
+    profiles.map(p => '<option value="'+p.id+'">'+ (p.email || p.id) +'</option>').join('');
+  sel.value = adminSeleccion;
+}
+
 async function cargarYRenderizarTodo(){
   registros = await cargarRegistros();
+  tarjetasConfig = await cargarTarjetasConfig();
   actualizarFiltroMes();
   renderTodo();
 }
 
+$('btnGuardarTarjeta').addEventListener('click', async () => {
+  const nombre = $('cfgNombreTarjeta').value.trim();
+  if(!nombre) return;
+  const cupo = parseFloat($('cfgCupo').value) || null;
+  const tasaInteres = parseFloat($('cfgTasa').value) || null;
+  const diaCorte = parseInt($('cfgDiaCorte').value, 10) || null;
+  const diaPago = parseInt($('cfgDiaPago').value, 10) || null;
+
+  $('btnGuardarTarjeta').disabled = true;
+  const { error } = await supabaseClient.from('tarjetas_config').upsert({
+    user_id: currentUser.id, nombre, cupo, tasa_interes: tasaInteres, dia_corte: diaCorte, dia_pago: diaPago,
+  }, { onConflict: 'user_id,nombre' });
+  $('btnGuardarTarjeta').disabled = false;
+
+  if(error){ mostrarEstadoGuardado(false); return; }
+  mostrarEstadoGuardado(true);
+  tarjetasConfig = await cargarTarjetasConfig();
+  $('cfgNombreTarjeta').value = ''; $('cfgCupo').value = ''; $('cfgTasa').value = ''; $('cfgDiaCorte').value = ''; $('cfgDiaPago').value = '';
+  renderBalanceTab();
+});
+
 // ---------- TABS ----------
 function setTab(name){
+  if(name === 'agregar' && isAdmin && adminSeleccion !== 'propio'){
+    // No se puede agregar registros mientras se ve la información de otro usuario:
+    // cualquier registro nuevo quedaría a nombre del admin, no de esa persona.
+    name = 'inicio';
+  }
+  if(name !== 'gastos' && busqueda){
+    // Evita que un texto de búsqueda olvidado siga filtrando en silencio la próxima vez que entres a Gastos.
+    busqueda = '';
+    $('buscar').value = '';
+  }
   ['inicio','gastos','agregar','balance'].forEach(t => {
     $('panel-'+t).classList.toggle('hidden', t !== name);
   });
@@ -457,33 +612,97 @@ function setTab(name){
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
 
+function actualizarDisponibilidadAgregar(){
+  const bloquear = isAdmin && adminSeleccion !== 'propio';
+  const btn = document.querySelector('nav.tabs button[data-tab="agregar"]');
+  btn.disabled = bloquear;
+  btn.style.opacity = bloquear ? '0.4' : '1';
+  btn.title = bloquear ? 'Cambia a "Mis datos" para poder agregar registros' : '';
+}
+
 function pintarBotonTipo(){
   $('btnGasto').classList.toggle('active', tipo==='gasto');
   $('btnIngreso').classList.toggle('active', tipo==='ingreso');
   $('btnAhorro').classList.toggle('active', tipo==='ahorro');
 }
+function pintarBotonTipo(){
+  $('btnGasto').classList.toggle('active', tipo==='gasto');
+  $('btnIngreso').classList.toggle('active', tipo==='ingreso');
+  $('btnAhorro').classList.toggle('active', tipo==='ahorro');
+  $('btnPagoTC').classList.toggle('active', tipo==='pago_tarjeta');
+}
 function renderCategorias(){
+  $('categoria').classList.add('hidden');
+  $('camposAhorro').classList.add('hidden');
+  $('camposMetodoPago').classList.add('hidden');
+  $('camposPagoTC').classList.add('hidden');
+
   if(tipo === 'ahorro'){
-    $('categoria').classList.add('hidden');
     $('camposAhorro').classList.remove('hidden');
     return;
   }
+  if(tipo === 'pago_tarjeta'){
+    $('camposPagoTC').classList.remove('hidden');
+    return;
+  }
   $('categoria').classList.remove('hidden');
-  $('camposAhorro').classList.add('hidden');
+  if(tipo === 'gasto') $('camposMetodoPago').classList.remove('hidden');
   const cats = tipo === 'gasto' ? CAT_GASTOS : CAT_INGRESOS;
   $('categoria').innerHTML = cats.map(c => '<option value="'+c+'">'+c+'</option>').join('');
 }
 $('btnGasto').addEventListener('click', () => { tipo='gasto'; pintarBotonTipo(); renderCategorias(); });
 $('btnIngreso').addEventListener('click', () => { tipo='ingreso'; pintarBotonTipo(); renderCategorias(); });
 $('btnAhorro').addEventListener('click', () => { tipo='ahorro'; pintarBotonTipo(); renderCategorias(); });
+$('btnPagoTC').addEventListener('click', () => { tipo='pago_tarjeta'; pintarBotonTipo(); renderCategorias(); });
 renderCategorias();
 $('fecha').valueAsDate = new Date();
 
+$('moneda').addEventListener('change', () => {
+  const esExtranjera = $('moneda').value !== 'COP';
+  $('tasaCambio').classList.toggle('hidden', !esExtranjera);
+  $('avisoTasaCambio').classList.toggle('hidden', !esExtranjera);
+});
+
+function pintarBotonMetodoPago(){
+  $('btnEfectivo').classList.toggle('active', metodoPago === 'efectivo');
+  $('btnTarjeta').classList.toggle('active', metodoPago === 'tarjeta');
+  $('camposTarjeta').classList.toggle('hidden', metodoPago !== 'tarjeta');
+}
+$('btnEfectivo').addEventListener('click', () => { metodoPago = 'efectivo'; pintarBotonMetodoPago(); });
+$('btnTarjeta').addEventListener('click', () => { metodoPago = 'tarjeta'; pintarBotonMetodoPago(); });
+
+function pintarBotonMovimientoAhorro(){
+  $('btnAporte').classList.toggle('active', movimientoAhorro === 'aporte');
+  $('btnRetiro').classList.toggle('active', movimientoAhorro === 'retiro');
+  $('btnTransferencia').classList.toggle('active', movimientoAhorro === 'transferencia');
+  $('camposAhorroSimple').classList.toggle('hidden', movimientoAhorro === 'transferencia');
+  $('camposTransferencia').classList.toggle('hidden', movimientoAhorro !== 'transferencia');
+  if(movimientoAhorro === 'transferencia') poblarBolsilloOrigen();
+}
+function poblarBolsilloOrigen(){
+  const nombres = Object.keys(getBolsillos());
+  $('bolsilloOrigen').innerHTML = nombres.length
+    ? nombres.map(n => '<option value="'+n+'">'+n+'</option>').join('')
+    : '<option value="">Aún no tienes bolsillos</option>';
+}
+$('btnAporte').addEventListener('click', () => { movimientoAhorro = 'aporte'; pintarBotonMovimientoAhorro(); });
+$('btnRetiro').addEventListener('click', () => { movimientoAhorro = 'retiro'; pintarBotonMovimientoAhorro(); });
+$('btnTransferencia').addEventListener('click', () => { movimientoAhorro = 'transferencia'; pintarBotonMovimientoAhorro(); });
+
+let mesFiltroInicializado = false;
 function actualizarFiltroMes(){
   const keys = Array.from(new Set(registros.map(r => ymKey(r.fecha)).filter(Boolean))).sort().reverse();
   const actual = mesActivo;
   $('filtroMes').innerHTML = '<option value="todos">Todos los meses</option>' + keys.map(k => '<option value="'+k+'">'+ymLabel(k)+'</option>').join('');
-  if(keys.includes(actual)) $('filtroMes').value = actual; else mesActivo = 'todos';
+
+  if(!mesFiltroInicializado){
+    // Primera carga: por defecto muestra el mes más reciente con datos, no "todos"
+    mesActivo = keys.length ? keys[0] : 'todos';
+    mesFiltroInicializado = true;
+  } else if(!keys.includes(actual) && actual !== 'todos'){
+    mesActivo = keys.length ? keys[0] : 'todos';
+  }
+  $('filtroMes').value = mesActivo;
   $('descargaEtiqueta').textContent = mesActivo === 'todos' ? 'todos los meses' : ymLabel(mesActivo);
 }
 $('filtroMes').addEventListener('change', () => {
@@ -503,36 +722,49 @@ function gastosVisibles(){
 }
 function getTotales(){
   const r = registrosFiltrados();
-  const ingresos = r.filter(x => x.tipo==='ingreso').reduce((a,x)=>a+x.monto,0);
-  const gastos = r.filter(x => x.tipo==='gasto').reduce((a,x)=>a+x.monto,0);
-  const ahorro = r.filter(x => x.tipo==='ahorro').reduce((a,x)=>a+x.monto,0);
+  const ingresos = r.filter(x => x.tipo==='ingreso').reduce((a,x)=>a+montoCOP(x),0);
+  const gastos = r.filter(x => x.tipo==='gasto').reduce((a,x)=>a+montoCOP(x),0);
+  const ahorro = r.filter(x => x.tipo==='ahorro').reduce((a,x)=>a+(x.movimientoAhorro==='retiro' ? -montoCOP(x) : montoCOP(x)),0);
   return { ingresos, gastos, ahorro, balance: ingresos-gastos-ahorro };
 }
 function top5(porCatObj){ return Object.entries(porCatObj).sort((a,b)=>b[1]-a[1]).slice(0,5); }
 function porCategoriaInicio(){
-  const p = {}; registrosFiltrados().filter(r=>r.tipo==='gasto').forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
+  const p = {}; registrosFiltrados().filter(r=>r.tipo==='gasto').forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+montoCOP(r); }); return p;
 }
 function porCategoriaGastos(){
-  const p = {}; gastosVisibles().forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
+  const p = {}; gastosVisibles().forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+montoCOP(r); }); return p;
 }
 function getBolsillos(){
   const b = {};
   registros.filter(r=>r.tipo==='ahorro').forEach(r=>{
     const n = r.bolsillo || r.categoria;
     if(!b[n]) b[n] = { monto:0, tasaEA:r.tasaEA||0 };
-    b[n].monto += r.monto;
+    b[n].monto += (r.movimientoAhorro === 'retiro' ? -montoCOP(r) : montoCOP(r));
     if(r.tasaEA) b[n].tasaEA = r.tasaEA;
   });
   return b;
 }
+function emailDeUsuario(userId){
+  const p = profiles.find(x => x.id === userId);
+  return p ? p.email : userId;
+}
 function rowHTML(r, opts){
   opts = opts || {};
-  const cls = r.tipo==='ingreso' ? 'in' : r.tipo==='ahorro' ? 'ahorro' : 'gasto';
-  const signo = r.tipo==='ingreso' ? '+' : '-';
-  const botones = (opts.conEditar ? '<button class="edit" data-id="'+r.id+'" aria-label="Editar">✎</button>' : '') +
-    (opts.conBorrar ? '<button class="del" data-id="'+r.id+'" aria-label="Eliminar">✕</button>' : '');
-  return '<div class="row"><div><p class="desc">'+r.descripcion+'</p><p class="meta">'+r.categoria+' · '+r.fecha+'</p></div>'+
-    '<div class="right"><span class="amt '+cls+'">'+signo+fmt(r.monto)+'</span>'+botones+'</div></div>';
+  const esPropio = !currentUser || r.userId === currentUser.id;
+  const esRetiro = r.tipo === 'ahorro' && r.movimientoAhorro === 'retiro';
+  const cls = r.tipo==='ingreso' ? 'in' : esRetiro ? 'in' : (r.tipo==='ahorro' || r.tipo==='pago_tarjeta') ? 'ahorro' : 'gasto';
+  const signo = (r.tipo==='ingreso' || esRetiro) ? '+' : '-';
+  const botones = (opts.conEditar && esPropio ? '<button class="edit" data-id="'+r.id+'" aria-label="Editar">✎</button>' : '') +
+    (opts.conBorrar && esPropio ? '<button class="del" data-id="'+r.id+'" aria-label="Eliminar">✕</button>' : '');
+  const infoTarjeta = (r.metodoPago === 'tarjeta' && r.tarjeta) ? ' · 💳 '+r.tarjeta+(r.cuotas ? ' ('+r.cuotas+' cuotas)' : '') : '';
+  const etiquetaPago = r.tipo === 'pago_tarjeta' ? ' · 💳 Pago a '+(r.tarjeta || r.categoria) : '';
+  const etiquetaRetiro = esRetiro ? ' · ➖ Retiro' : (r.tipo === 'ahorro' ? ' · ➕ Aporte' : '');
+  const etiquetaUsuario = (isAdmin && adminSeleccion === 'todos') ? ' · 🛡️ '+emailDeUsuario(r.userId) : '';
+  const esExtranjera = r.moneda && r.moneda !== 'COP';
+  const montoPrincipal = esExtranjera ? fmtEnMoneda(r.monto, r.moneda) : fmt(r.monto);
+  const equivalenteCOP = esExtranjera ? '<br><span style="font-size:11px;">≈ '+fmt(montoCOP(r))+'</span>' : '';
+  return '<div class="row"><div><p class="desc">'+r.descripcion+'</p><p class="meta">'+r.categoria+' · '+r.fecha+infoTarjeta+etiquetaPago+etiquetaRetiro+etiquetaUsuario+'</p></div>'+
+    '<div class="right"><span class="amt '+cls+'">'+signo+montoPrincipal+equivalenteCOP+'</span>'+botones+'</div></div>';
 }
 
 function renderInicio(){
@@ -582,7 +814,7 @@ function renderGastosTab(){
   });
 
   const gastos = gastosVisibles();
-  const totalB = gastos.reduce((a,r)=>a+r.monto,0);
+  const totalB = gastos.reduce((a,r)=>a+montoCOP(r),0);
   $('totalFiltrado').textContent = gastos.length ? '· ' + fmt(totalB) : '';
   $('listaGastos').innerHTML = gastos.length ? gastos.slice().reverse().map(r=>rowHTML(r,{conBorrar:true, conEditar:true})).join('') : '<p class="empty">No hay gastos que coincidan.</p>';
   document.querySelectorAll('#listaGastos .del').forEach(btn => btn.addEventListener('click', onBorrar));
@@ -624,29 +856,132 @@ function renderBalanceTab(){
   }
 
   const bullets = [];
-  if(t.ingresos > 0){
-    const tasaAhorroPct = (t.ahorro/t.ingresos)*100;
-    if(tasaAhorroPct < 20){
-      const faltante = t.ingresos*0.20 - t.ahorro;
-      bullets.push('Tu tasa de ahorro este periodo es del <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos. Una meta común es 15–20%; te faltarían cerca de <strong>'+fmt(faltante)+'</strong> para llegar a ese rango.');
+  const porCat = porCategoriaInicio();
+  const topCats = top5(porCat);
+
+  // 1. Balance del periodo: déficit o superávit, explícito
+  if(t.ingresos > 0 || t.gastos > 0){
+    if(t.balance < 0){
+      bullets.push('⚠️ Este periodo <strong>gastaste '+fmt(Math.abs(t.balance))+' más de lo que ingresó</strong> (ingresos '+fmt(t.ingresos)+' vs. gastos+ahorro '+fmt(t.gastos+t.ahorro)+'). Este es el problema más urgente a resolver.');
     } else {
-      bullets.push('Tu tasa de ahorro este periodo es del <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos, por encima del rango de referencia de 15–20%. Vas bien.');
+      bullets.push('Este periodo te sobraron <strong>'+fmt(t.balance)+'</strong> después de gastos y ahorro (ingresos '+fmt(t.ingresos)+').');
     }
   }
-  const porCat = porCategoriaInicio();
-  const discrecional = CAT_DISCRECIONAL.reduce((a,c)=>a+(porCat[c]||0),0);
-  if(t.gastos > 0 && discrecional > 0){
-    const pct = (discrecional/t.gastos)*100;
-    bullets.push('Los gastos discrecionales (Rappi, licor, salidas, comida de fin de semana y compras) suman <strong>'+fmt(discrecional)+'</strong>, el <strong>'+pct.toFixed(0)+'%</strong> de tus gastos. Reducirlos a la mitad liberaría cerca de <strong>'+fmt(discrecional/2)+'</strong> al mes para ahorro o inversión.');
+
+  // 2. La categoría que más pesa, nombrada explícitamente
+  if(topCats.length && t.gastos > 0){
+    const [catTop, montoTop] = topCats[0];
+    const pctTop = (montoTop / t.gastos) * 100;
+    const esDiscrecional = CAT_DISCRECIONAL.includes(catTop);
+    bullets.push('Tu mayor gasto es <strong>'+catTop+'</strong> con <strong>'+fmt(montoTop)+'</strong> ('+pctTop.toFixed(0)+'% de todo lo que gastaste)'+(esDiscrecional ? ', y es una categoría discrecional — el punto más directo donde recortar si necesitas liberar plata.' : '.'));
   }
-  if(nombres.length){
-    const tasaProm = nombres.reduce((a,n)=>a+bolsillos[n].monto*bolsillos[n].tasaEA,0)/totalAhorrado;
-    bullets.push('Tu tasa promedio de ahorro (<strong>'+tasaProm.toFixed(1)+'% EA</strong>) es razonable para fondos líquidos en bolsillos digitales, que sirven bien como reserva de emergencia (idealmente 3 a 6 meses de gastos fijos).');
-    bullets.push('Para el excedente que no necesites de forma inmediata, las alternativas típicas en Colombia para comparar son: <strong>CDT a plazo fijo</strong> (tasa fija, normalmente mayor si dejas el dinero quieto por meses), <strong>Fondos de Inversión Colectiva (FIC)</strong> de riesgo moderado con liquidez diaria, y <strong>fondos indexados o ETFs</strong> para metas de largo plazo, con mayor volatilidad pero retorno histórico superior. La mezcla depende de tu horizonte y tolerancia al riesgo.');
-  } else {
-    bullets.push('Aún no tienes bolsillos de ahorro registrados este periodo. Empieza por separar un fondo de emergencia líquido (3-6 meses de gastos fijos) antes de considerar instrumentos de mayor plazo.');
+
+  // 3. Comparación explícita con el mes anterior (solo si hay un mes puntual seleccionado)
+  if(mesActivo !== 'todos' && topCats.length){
+    const [catTop, montoTop] = topCats[0];
+    const keyAnterior = mesAnterior(mesActivo);
+    const porCatAnterior = porCategoriaEnMes(keyAnterior);
+    const montoAnterior = porCatAnterior[catTop] || 0;
+    if(montoAnterior > 0){
+      const delta = montoTop - montoAnterior;
+      const pctDelta = (delta / montoAnterior) * 100;
+      if(Math.abs(pctDelta) >= 15){
+        bullets.push(delta > 0
+          ? 'En <strong>'+catTop+'</strong> gastaste <strong>'+fmt(delta)+' más</strong> que en '+ymLabel(keyAnterior)+' ('+pctDelta.toFixed(0)+'% de aumento). Vale la pena revisar qué cambió ahí.'
+          : 'En <strong>'+catTop+'</strong> gastaste <strong>'+fmt(Math.abs(delta))+' menos</strong> que en '+ymLabel(keyAnterior)+' ('+Math.abs(pctDelta).toFixed(0)+'% de reducción). Bien ahí.');
+      }
+    }
   }
+
+  // 4. Ahorro: explícito, distinguiendo "no ahorré" de "saqué más de lo que metí"
+  if(t.ingresos > 0){
+    if(t.ahorro < 0){
+      bullets.push('⚠️ Este periodo <strong>sacaste '+fmt(Math.abs(t.ahorro))+' más de tus ahorros de lo que metiste</strong>. No es necesariamente malo si fue para algo puntual, pero si se repite seguido vale la pena revisar por qué se está descapitalizando el ahorro.');
+    } else if(t.ahorro === 0){
+      bullets.push('No registraste <strong>ningún movimiento de ahorro</strong> este periodo. Aunque sea un monto pequeño y fijo cada vez que te paguen, empezar a mover algo (aunque sea 5%) ya cambia la tendencia.');
+    } else {
+      const tasaAhorroPct = (t.ahorro/t.ingresos)*100;
+      if(tasaAhorroPct < 20){
+        const faltante = t.ingresos*0.20 - t.ahorro;
+        bullets.push('Ahorraste el <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos. Para llegar al rango de referencia de 15–20% te faltarían cerca de <strong>'+fmt(faltante)+'</strong> más.');
+      } else {
+        bullets.push('Ahorraste el <strong>'+tasaAhorroPct.toFixed(1)+'%</strong> de tus ingresos, por encima del rango de referencia de 15–20%. Vas bien en esto.');
+      }
+    }
+  }
+
+  // 5. Deuda de tarjetas frente al ingreso del periodo Y frente al cupo, nombrando la tarjeta más pesada
+  const deudaPorTarjeta = {};
+  registros.filter(r => r.tipo === 'gasto' && r.metodoPago === 'tarjeta' && r.tarjeta).forEach(r => {
+    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) + montoCOP(r);
+  });
+  registros.filter(r => r.tipo === 'pago_tarjeta' && r.tarjeta).forEach(r => {
+    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) - montoCOP(r);
+  });
+  const tarjetasConDeuda = Object.entries(deudaPorTarjeta).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+  if(tarjetasConDeuda.length){
+    const [tjNombre, tjDeuda] = tarjetasConDeuda[0];
+    const cfgTj = tarjetasConfig[tjNombre] || {};
+    let fraseCupo = '';
+    if(cfgTj.cupo){
+      const pctCupo = Math.round((tjDeuda / cfgTj.cupo) * 100);
+      fraseCupo = ' Eso es el <strong>'+pctCupo+'%</strong> del cupo que le configuraste a esa tarjeta.'+(pctCupo >= 80 ? ' Está muy cerca del límite.' : '');
+    }
+    if(t.ingresos > 0){
+      const pctIngreso = (tjDeuda / t.ingresos) * 100;
+      bullets.push('Tu deuda en <strong>'+tjNombre+'</strong> es de <strong>'+fmt(tjDeuda)+'</strong>, equivalente al <strong>'+pctIngreso.toFixed(0)+'%</strong> de tus ingresos de este periodo.'+fraseCupo+(pctIngreso >= 50 ? ' Es un monto alto frente a lo que ingresa — prioriza pagarla antes de asumir cuotas nuevas.' : ''));
+    } else {
+      bullets.push('Tienes una deuda de <strong>'+fmt(tjDeuda)+'</strong> en <strong>'+tjNombre+'</strong> pendiente por pagar.'+fraseCupo);
+    }
+  }
+
+  if(!nombres.length){
+    bullets.push('No tienes bolsillos de ahorro registrados. Antes de pensar en inversión, separa un fondo de emergencia líquido (3-6 meses de gastos fijos).');
+  }
+
   $('analisisEjecutivo').innerHTML = '<ul>'+bullets.map(b=>'<li>'+b+'</li>').join('')+'</ul>';
+
+  const porTarjeta = {};
+  registros.filter(r => r.tipo === 'gasto' && r.metodoPago === 'tarjeta' && r.tarjeta).forEach(r => {
+    if(!porTarjeta[r.tarjeta]) porTarjeta[r.tarjeta] = { comprado: 0, pagado: 0, cuotaMensual: 0 };
+    porTarjeta[r.tarjeta].comprado += montoCOP(r);
+    porTarjeta[r.tarjeta].cuotaMensual += montoCOP(r) / (r.cuotas || 1);
+  });
+  registros.filter(r => r.tipo === 'pago_tarjeta' && r.tarjeta).forEach(r => {
+    if(!porTarjeta[r.tarjeta]) porTarjeta[r.tarjeta] = { comprado: 0, pagado: 0, cuotaMensual: 0 };
+    porTarjeta[r.tarjeta].pagado += montoCOP(r);
+  });
+  Object.keys(tarjetasConfig).forEach(n => { if(!porTarjeta[n]) porTarjeta[n] = { comprado: 0, pagado: 0, cuotaMensual: 0 }; });
+
+  const nombresTarjetas = Object.keys(porTarjeta);
+  $('resumenTarjetas').innerHTML = nombresTarjetas.length ? nombresTarjetas.map(n => {
+    const tj = porTarjeta[n];
+    const cfg = tarjetasConfig[n] || {};
+    const deuda = tj.comprado - tj.pagado;
+    let html = '<div class="row" style="align-items:flex-start;"><div><span style="font-size:14px; font-weight:500;">💳 '+n+'</span>';
+    const detalles = [];
+    if(cfg.tasaInteres) detalles.push(cfg.tasaInteres+'% EA');
+    if(cfg.diaCorte) detalles.push('corte día '+cfg.diaCorte);
+    if(cfg.diaPago) detalles.push('pago día '+cfg.diaPago);
+    if(detalles.length) html += '<p class="meta" style="margin-top:2px;">'+detalles.join(' · ')+'</p>';
+    html += '</div><div style="text-align:right;">';
+    html += '<span class="amt '+(deuda > 0 ? 'gasto' : 'in')+'" style="display:block;">'+fmt(deuda)+' deuda</span>';
+    html += '<span style="font-size:11px; color:var(--text-3);">Comprado '+fmt(tj.comprado)+' · Pagado '+fmt(tj.pagado)+'</span>';
+    if(tj.cuotaMensual > 0) html += '<br><span style="font-size:11px; color:var(--text-3);">≈ '+fmt(tj.cuotaMensual)+'/mes en cuotas</span>';
+    html += '</div></div>';
+
+    if(cfg.cupo){
+      const disponible = cfg.cupo - deuda;
+      const pctUsado = Math.min(100, Math.max(0, Math.round((deuda / cfg.cupo) * 100)));
+      const colorBarra = pctUsado >= 80 ? 'var(--red)' : pctUsado >= 50 ? '#C9A227' : 'var(--green)';
+      html += '<div class="bar-row" style="margin-top:6px;"><div class="top"><span>Cupo disponible: '+fmt(Math.max(0,disponible))+'</span><span class="amt">'+pctUsado+'% usado</span></div>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+pctUsado+'%; background:'+colorBarra+';"></div></div></div>';
+      if(pctUsado >= 80){
+        html += '<p style="font-size:11.5px; color:var(--red); margin:4px 0 0;">⚠️ Estás usando el '+pctUsado+'% del cupo de esta tarjeta.</p>';
+      }
+    }
+    return html;
+  }).join('<div style="height:14px;"></div>') : '<p class="empty">Sin tarjetas registradas.</p>';
 
   const movimientos = registrosFiltrados().slice().sort((a,b) => (a.fecha < b.fecha ? 1 : -1));
   $('listaMovimientos').innerHTML = movimientos.length
@@ -681,9 +1016,24 @@ function onEditar(e){
   if(tipo === 'ahorro'){
     $('nombreBolsillo').value = r.bolsillo || r.categoria;
     $('tasaEA').value = r.tasaEA || '';
+    movimientoAhorro = r.movimientoAhorro === 'retiro' ? 'retiro' : 'aporte';
+    pintarBotonMovimientoAhorro();
+  } else if(tipo === 'pago_tarjeta'){
+    $('tarjetaPago').value = r.tarjeta || r.categoria || '';
   } else {
     $('categoria').value = r.categoria;
   }
+  if(tipo === 'gasto'){
+    metodoPago = r.metodoPago === 'tarjeta' ? 'tarjeta' : 'efectivo';
+    pintarBotonMetodoPago();
+    $('nombreTarjeta').value = r.tarjeta || '';
+    $('numCuotas').value = r.cuotas || '';
+  }
+  $('moneda').value = r.moneda || 'COP';
+  const esExtranjera = (r.moneda || 'COP') !== 'COP';
+  $('tasaCambio').classList.toggle('hidden', !esExtranjera);
+  $('avisoTasaCambio').classList.toggle('hidden', !esExtranjera);
+  $('tasaCambio').value = esExtranjera ? (r.tasaCambio || '') : '';
   $('editingBanner').classList.remove('hidden');
   $('btnAgregar').textContent = 'Guardar cambios';
   setTab('agregar');
@@ -697,6 +1047,17 @@ function cancelarEdicion(){
   $('descripcion').value = '';
   $('fecha').valueAsDate = new Date();
   if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
+  movimientoAhorro = 'aporte';
+  pintarBotonMovimientoAhorro();
+  metodoPago = 'efectivo';
+  pintarBotonMetodoPago();
+  $('nombreTarjeta').value = '';
+  $('numCuotas').value = '';
+  $('tarjetaPago').value = '';
+  $('moneda').value = 'COP';
+  $('tasaCambio').value = '';
+  $('tasaCambio').classList.add('hidden');
+  $('avisoTasaCambio').classList.add('hidden');
 }
 $('btnCancelarEdicion').addEventListener('click', cancelarEdicion);
 
@@ -711,8 +1072,8 @@ function csvEscape(v){
   return s.includes(',') || s.includes('"') ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
 $('btnDescargar').addEventListener('click', () => {
-  const filas = [['Tipo','Fecha','Categoría','Descripción','Monto','TasaEA']];
-  registrosFiltrados().forEach(r => filas.push([r.tipo, r.fecha, r.categoria, r.descripcion, r.monto, r.tasaEA||'']));
+  const filas = [['Tipo','Fecha','Categoría','Descripción','Monto','Moneda','TasaCambio','MontoCOP','TasaEA','MovimientoAhorro']];
+  registrosFiltrados().forEach(r => filas.push([r.tipo, r.fecha, r.categoria, r.descripcion, r.monto, r.moneda || 'COP', r.tasaCambio || 1, montoCOP(r), r.tasaEA||'', r.movimientoAhorro||'']));
   const csv = filas.map(f => f.map(csvEscape).join(',')).join('\n');
   const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -725,17 +1086,67 @@ $('btnAgregar').addEventListener('click', async () => {
   const monto = parseFloat($('monto').value);
   const descripcion = $('descripcion').value.trim();
   const fecha = $('fecha').value;
+  const moneda = $('moneda').value;
+  const tasaCambio = parseFloat($('tasaCambio').value) || 0;
   if(!monto || monto <= 0 || !descripcion || !fecha) return;
+  if(moneda !== 'COP' && tasaCambio <= 0){
+    $('avisoTasaCambio').classList.remove('hidden');
+    return;
+  }
+
+  // Transferencia entre bolsillos: crea un retiro + un aporte, en una sola acción
+  if(tipo === 'ahorro' && movimientoAhorro === 'transferencia' && editingId === null){
+    const origen = $('bolsilloOrigen').value;
+    const destino = $('bolsilloDestino').value.trim();
+    if(!origen || !destino) return;
+    if(origen === destino) { mostrarEstadoGuardado(false); return; }
+    const bolsillosActuales = getBolsillos();
+    const tasaOrigen = (bolsillosActuales[origen] && bolsillosActuales[origen].tasaEA) || 0;
+    const tasaDestino = parseFloat($('tasaEADestino').value) || (bolsillosActuales[destino] && bolsillosActuales[destino].tasaEA) || 0;
+
+    $('btnAgregar').disabled = true;
+    try {
+      const retiro = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido a '+destino+')', categoria: origen, bolsillo: origen, tasaEA: tasaOrigen, fecha, movimientoAhorro:'retiro', moneda, tasaCambio: moneda==='COP'?1:tasaCambio };
+      const aporte = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido desde '+origen+')', categoria: destino, bolsillo: destino, tasaEA: tasaDestino, fecha, movimientoAhorro:'aporte', moneda, tasaCambio: moneda==='COP'?1:tasaCambio };
+      const r1 = await supabaseClient.from('registros').insert(toDB(retiro));
+      if(r1.error) throw r1.error;
+      const r2 = await supabaseClient.from('registros').insert(toDB(aporte));
+      if(r2.error) throw r2.error;
+      mostrarEstadoGuardado(true);
+      $('nombreBolsillo').value = ''; $('tasaEA').value = ''; $('bolsilloDestino').value = ''; $('tasaEADestino').value = '';
+      movimientoAhorro = 'aporte'; pintarBotonMovimientoAhorro();
+      $('monto').value = ''; $('descripcion').value = '';
+      registros = await cargarRegistros();
+      actualizarFiltroMes();
+      renderTodo();
+      setTab('inicio');
+    } catch(e){
+      mostrarEstadoGuardado(false);
+    } finally {
+      $('btnAgregar').disabled = false;
+    }
+    return;
+  }
 
   let datosNuevos;
   if(tipo === 'ahorro'){
     const nombre = $('nombreBolsillo').value.trim();
     if(!nombre) return;
     const tasa = parseFloat($('tasaEA').value) || 0;
-    datosNuevos = { tipo, monto, descripcion, categoria: nombre, bolsillo: nombre, tasaEA: tasa, fecha };
+    datosNuevos = { tipo, monto, descripcion, categoria: nombre, bolsillo: nombre, tasaEA: tasa, fecha, movimientoAhorro };
+  } else if(tipo === 'gasto'){
+    const tarjeta = metodoPago === 'tarjeta' ? $('nombreTarjeta').value.trim() : null;
+    const cuotas = metodoPago === 'tarjeta' ? (parseInt($('numCuotas').value, 10) || 1) : null;
+    datosNuevos = { tipo, monto, descripcion, categoria: $('categoria').value, fecha, metodoPago, tarjeta, cuotas };
+  } else if(tipo === 'pago_tarjeta'){
+    const tarjeta = $('tarjetaPago').value.trim();
+    if(!tarjeta) return;
+    datosNuevos = { tipo, monto, descripcion, categoria: tarjeta, tarjeta, fecha };
   } else {
     datosNuevos = { tipo, monto, descripcion, categoria: $('categoria').value, fecha };
   }
+  datosNuevos.moneda = moneda;
+  datosNuevos.tasaCambio = moneda === 'COP' ? 1 : tasaCambio;
 
   $('btnAgregar').disabled = true;
   try {
@@ -746,8 +1157,11 @@ $('btnAgregar').addEventListener('click', async () => {
     } else {
       const { error } = await supabaseClient.from('registros').insert(toDB(datosNuevos));
       if(error) throw error;
-      if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; }
+      if(tipo === 'ahorro'){ $('nombreBolsillo').value = ''; $('tasaEA').value = ''; movimientoAhorro = 'aporte'; pintarBotonMovimientoAhorro(); }
+      if(tipo === 'gasto'){ $('nombreTarjeta').value = ''; $('numCuotas').value = ''; metodoPago = 'efectivo'; pintarBotonMetodoPago(); }
+      if(tipo === 'pago_tarjeta'){ $('tarjetaPago').value = ''; }
       $('monto').value = ''; $('descripcion').value = '';
+      $('moneda').value = 'COP'; $('tasaCambio').value = ''; $('tasaCambio').classList.add('hidden'); $('avisoTasaCambio').classList.add('hidden');
     }
     mostrarEstadoGuardado(true);
     registros = await cargarRegistros();
