@@ -172,6 +172,15 @@
     <button class="signout-btn" id="btnSignOut">Cerrar sesión</button>
   </header>
 
+  <div class="month-row" style="border-bottom:none; padding-bottom:0;">
+    <span style="color:var(--text-3); font-size:14px;">💱</span>
+    <select id="selectorMonedaCuenta">
+      <option value="COP">🇨🇴 Pesos colombianos (COP)</option>
+      <option value="USD">🇺🇸 Dólares estadounidenses (USD)</option>
+      <option value="AUD">🇦🇺 Dólares australianos (AUD)</option>
+    </select>
+  </div>
+
   <div class="month-row hidden" id="adminSelectorRow" style="border-bottom:none; padding-bottom:0;">
     <span style="color:var(--text-3); font-size:14px;">🛡️</span>
     <select id="selectorAdmin"></select>
@@ -239,15 +248,6 @@
         <span class="field-label">Fecha</span>
         <input type="date" id="fecha" class="gap" />
         <input type="number" id="monto" placeholder="Monto" min="0" class="gap" />
-        <div style="display:flex; gap:8px;" class="gap">
-          <select id="moneda" style="flex:1;">
-            <option value="COP">🇨🇴 COP</option>
-            <option value="USD">🇺🇸 USD</option>
-            <option value="AUD">🇦🇺 AUD</option>
-          </select>
-          <input type="number" id="tasaCambio" placeholder="Tasa de cambio a COP" min="0" step="0.01" style="flex:1.4;" class="hidden" />
-        </div>
-        <p id="avisoTasaCambio" class="hint hidden" style="margin:-6px 0 11px; color:var(--red);">Indica cuántos pesos vale 1 unidad de esa moneda hoy, para poder sumarlo bien en tus totales.</p>
         <input type="text" id="descripcion" placeholder="Descripción (ej. mercado de la semana)" class="gap" />
         <select id="categoria" class="gap"></select>
         <div id="camposAhorro" class="hidden">
@@ -307,8 +307,9 @@
       <div id="resumenTarjetas" style="margin-bottom:16px;"></div>
 
       <div class="form-card" style="margin-bottom:26px;">
-        <p class="field-label" style="margin-bottom:10px;">Configurar cupo y tasa de una tarjeta</p>
+        <p class="field-label" style="margin-bottom:10px;">Configurar una tarjeta (cupo, tasa y deuda si ya tenías)</p>
         <input type="text" id="cfgNombreTarjeta" placeholder="Banco / tarjeta (ej. Bancolombia Visa)" class="gap" />
+        <input type="number" id="cfgDeudaInicial" placeholder="Deuda inicial, si ya tenías (o 0 si es nueva)" min="0" class="gap" />
         <input type="number" id="cfgCupo" placeholder="Cupo total (ej. 5000000)" min="0" class="gap" />
         <input type="number" id="cfgTasa" placeholder="Tasa de interés EA % (ej. 28.5)" min="0" step="0.1" class="gap" />
         <div style="display:flex; gap:8px;" class="gap">
@@ -341,14 +342,8 @@ const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto"
 
 const $ = (id) => document.getElementById(id);
 const MONEDA_LOCALE = { COP: 'es-CO', USD: 'en-US', AUD: 'en-AU' };
-const fmt = (n) => new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP', maximumFractionDigits:0}).format(Math.round(n||0));
-function fmtEnMoneda(n, moneda){
-  return new Intl.NumberFormat(MONEDA_LOCALE[moneda] || 'es-CO', {style:'currency', currency: moneda || 'COP', maximumFractionDigits: moneda === 'COP' ? 0 : 2}).format(n||0);
-}
-function montoCOP(r){
-  if(!r.moneda || r.moneda === 'COP') return r.monto;
-  return r.monto * (r.tasaCambio || 1);
-}
+let monedaCuenta = 'COP';
+const fmt = (n) => new Intl.NumberFormat(MONEDA_LOCALE[monedaCuenta] || 'es-CO', {style:'currency', currency: monedaCuenta || 'COP', maximumFractionDigits: monedaCuenta === 'COP' ? 0 : 2}).format(n||0);
 const ymKey = (f) => f ? f.slice(0,7) : '';
 const ymLabel = (k) => { const [y,m] = k.split('-'); return MESES[parseInt(m,10)-1] + ' ' + y; };
 function mesAnterior(key){
@@ -358,7 +353,7 @@ function mesAnterior(key){
 }
 function porCategoriaEnMes(key){
   const p = {};
-  registros.filter(r => r.tipo==='gasto' && ymKey(r.fecha)===key).forEach(r => { p[r.categoria] = (p[r.categoria]||0) + montoCOP(r); });
+  registros.filter(r => r.tipo==='gasto' && ymKey(r.fecha)===key).forEach(r => { p[r.categoria] = (p[r.categoria]||0) + r.monto; });
   return p;
 }
 
@@ -392,8 +387,6 @@ function fromDB(row){
     metodoPago: row.metodo_pago || 'efectivo',
     tarjeta: row.tarjeta || null,
     cuotas: row.cuotas || null,
-    moneda: row.moneda || 'COP',
-    tasaCambio: row.tasa_cambio != null ? Number(row.tasa_cambio) : 1,
     movimientoAhorro: row.movimiento_ahorro || 'aporte',
   };
 }
@@ -409,8 +402,6 @@ function toDB(datos){
     metodo_pago: datos.metodoPago || 'efectivo',
     tarjeta: datos.tarjeta || null,
     cuotas: datos.cuotas || null,
-    moneda: datos.moneda || 'COP',
-    tasa_cambio: datos.moneda && datos.moneda !== 'COP' ? (datos.tasaCambio || 1) : 1,
     movimiento_ahorro: datos.movimientoAhorro || 'aporte',
     user_id: currentUser.id,
   };
@@ -471,6 +462,7 @@ async function mostrarApp(user){
   $('loginScreen').classList.add('hidden');
   $('appWrap').classList.remove('hidden');
   $('userEmailLabel').textContent = user.email;
+  await cargarMonedaCuenta();
   await verificarAdmin();
   if(isAdmin){
     $('adminBadge').classList.remove('hidden');
@@ -480,6 +472,24 @@ async function mostrarApp(user){
   actualizarDisponibilidadAgregar();
   await cargarYRenderizarTodo();
 }
+
+async function cargarMonedaCuenta(){
+  try {
+    const { data } = await supabaseClient.from('profiles').select('moneda').eq('id', currentUser.id).maybeSingle();
+    monedaCuenta = (data && data.moneda) || 'COP';
+  } catch(e){
+    monedaCuenta = 'COP';
+  }
+  $('selectorMonedaCuenta').value = monedaCuenta;
+}
+
+$('selectorMonedaCuenta').addEventListener('change', async () => {
+  monedaCuenta = $('selectorMonedaCuenta').value;
+  try {
+    await supabaseClient.from('profiles').update({ moneda: monedaCuenta }).eq('id', currentUser.id);
+  } catch(e){ /* si falla, igual queda aplicada en esta sesión */ }
+  renderTodo();
+});
 
 $('selectorAdmin')?.addEventListener('change', async () => {
   adminSeleccion = $('selectorAdmin').value;
@@ -496,6 +506,7 @@ function mostrarLogin(){
   profiles = [];
   mesActivo = 'todos';
   mesFiltroInicializado = false;
+  monedaCuenta = 'COP';
   $('loginEmail').value = '';
   $('loginPassword').value = '';
   $('loginError').classList.add('hidden');
@@ -564,7 +575,7 @@ async function cargarTarjetasConfig(){
   }
   const map = {};
   rows.forEach(t => {
-    map[t.nombre] = { cupo: t.cupo != null ? Number(t.cupo) : null, tasaInteres: t.tasa_interes != null ? Number(t.tasa_interes) : null, diaCorte: t.dia_corte, diaPago: t.dia_pago };
+    map[t.nombre] = { cupo: t.cupo != null ? Number(t.cupo) : null, tasaInteres: t.tasa_interes != null ? Number(t.tasa_interes) : null, diaCorte: t.dia_corte, diaPago: t.dia_pago, deudaInicial: t.deuda_inicial != null ? Number(t.deuda_inicial) : 0 };
   });
   return map;
 }
@@ -597,6 +608,7 @@ async function cargarYRenderizarTodo(){
 $('btnGuardarTarjeta').addEventListener('click', async () => {
   const nombre = $('cfgNombreTarjeta').value.trim();
   if(!nombre) return;
+  const deudaInicial = parseFloat($('cfgDeudaInicial').value) || 0;
   const cupo = parseFloat($('cfgCupo').value) || null;
   const tasaInteres = parseFloat($('cfgTasa').value) || null;
   const diaCorte = parseInt($('cfgDiaCorte').value, 10) || null;
@@ -604,14 +616,14 @@ $('btnGuardarTarjeta').addEventListener('click', async () => {
 
   $('btnGuardarTarjeta').disabled = true;
   const { error } = await supabaseClient.from('tarjetas_config').upsert({
-    user_id: currentUser.id, nombre, cupo, tasa_interes: tasaInteres, dia_corte: diaCorte, dia_pago: diaPago,
+    user_id: currentUser.id, nombre, cupo, tasa_interes: tasaInteres, dia_corte: diaCorte, dia_pago: diaPago, deuda_inicial: deudaInicial,
   }, { onConflict: 'user_id,nombre' });
   $('btnGuardarTarjeta').disabled = false;
 
   if(error){ mostrarEstadoGuardado(false); return; }
   mostrarEstadoGuardado(true);
   tarjetasConfig = await cargarTarjetasConfig();
-  $('cfgNombreTarjeta').value = ''; $('cfgCupo').value = ''; $('cfgTasa').value = ''; $('cfgDiaCorte').value = ''; $('cfgDiaPago').value = '';
+  $('cfgNombreTarjeta').value = ''; $('cfgDeudaInicial').value = ''; $('cfgCupo').value = ''; $('cfgTasa').value = ''; $('cfgDiaCorte').value = ''; $('cfgDiaPago').value = '';
   renderBalanceTab();
 });
 
@@ -681,12 +693,6 @@ $('btnPagoTC').addEventListener('click', () => { tipo='pago_tarjeta'; pintarBoto
 renderCategorias();
 $('fecha').valueAsDate = new Date();
 
-$('moneda').addEventListener('change', () => {
-  const esExtranjera = $('moneda').value !== 'COP';
-  $('tasaCambio').classList.toggle('hidden', !esExtranjera);
-  $('avisoTasaCambio').classList.toggle('hidden', !esExtranjera);
-});
-
 function pintarBotonMetodoPago(){
   $('btnEfectivo').classList.toggle('active', metodoPago === 'efectivo');
   $('btnTarjeta').classList.toggle('active', metodoPago === 'tarjeta');
@@ -746,24 +752,24 @@ function gastosVisibles(){
 }
 function getTotales(){
   const r = registrosFiltrados();
-  const ingresos = r.filter(x => x.tipo==='ingreso').reduce((a,x)=>a+montoCOP(x),0);
-  const gastos = r.filter(x => x.tipo==='gasto').reduce((a,x)=>a+montoCOP(x),0);
-  const ahorro = r.filter(x => x.tipo==='ahorro').reduce((a,x)=>a+(x.movimientoAhorro==='retiro' ? -montoCOP(x) : montoCOP(x)),0);
+  const ingresos = r.filter(x => x.tipo==='ingreso').reduce((a,x)=>a+x.monto,0);
+  const gastos = r.filter(x => x.tipo==='gasto').reduce((a,x)=>a+x.monto,0);
+  const ahorro = r.filter(x => x.tipo==='ahorro').reduce((a,x)=>a+(x.movimientoAhorro==='retiro' ? -x.monto : x.monto),0);
   return { ingresos, gastos, ahorro, balance: ingresos-gastos-ahorro };
 }
 function top5(porCatObj){ return Object.entries(porCatObj).sort((a,b)=>b[1]-a[1]).slice(0,5); }
 function porCategoriaInicio(){
-  const p = {}; registrosFiltrados().filter(r=>r.tipo==='gasto').forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+montoCOP(r); }); return p;
+  const p = {}; registrosFiltrados().filter(r=>r.tipo==='gasto').forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
 }
 function porCategoriaGastos(){
-  const p = {}; gastosVisibles().forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+montoCOP(r); }); return p;
+  const p = {}; gastosVisibles().forEach(r=>{ p[r.categoria]=(p[r.categoria]||0)+r.monto; }); return p;
 }
 function getBolsillos(){
   const b = {};
   registros.filter(r=>r.tipo==='ahorro').forEach(r=>{
     const n = r.bolsillo || r.categoria;
     if(!b[n]) b[n] = { monto:0, tasaEA:r.tasaEA||0 };
-    b[n].monto += (r.movimientoAhorro === 'retiro' ? -montoCOP(r) : montoCOP(r));
+    b[n].monto += (r.movimientoAhorro === 'retiro' ? -r.monto : r.monto);
     if(r.tasaEA) b[n].tasaEA = r.tasaEA;
   });
   return b;
@@ -784,11 +790,8 @@ function rowHTML(r, opts){
   const etiquetaPago = r.tipo === 'pago_tarjeta' ? ' · 💳 Pago a '+(r.tarjeta || r.categoria) : '';
   const etiquetaRetiro = esRetiro ? ' · ➖ Retiro' : (r.tipo === 'ahorro' ? ' · ➕ Aporte' : '');
   const etiquetaUsuario = (isAdmin && adminSeleccion === 'todos') ? ' · 🛡️ '+emailDeUsuario(r.userId) : '';
-  const esExtranjera = r.moneda && r.moneda !== 'COP';
-  const montoPrincipal = esExtranjera ? fmtEnMoneda(r.monto, r.moneda) : fmt(r.monto);
-  const equivalenteCOP = esExtranjera ? '<br><span style="font-size:11px;">≈ '+fmt(montoCOP(r))+'</span>' : '';
   return '<div class="row"><div><p class="desc">'+r.descripcion+'</p><p class="meta">'+r.categoria+' · '+r.fecha+infoTarjeta+etiquetaPago+etiquetaRetiro+etiquetaUsuario+'</p></div>'+
-    '<div class="right"><span class="amt '+cls+'">'+signo+montoPrincipal+equivalenteCOP+'</span>'+botones+'</div></div>';
+    '<div class="right"><span class="amt '+cls+'">'+signo+fmt(r.monto)+'</span>'+botones+'</div></div>';
 }
 
 function renderInicio(){
@@ -838,7 +841,7 @@ function renderGastosTab(){
   });
 
   const gastos = gastosVisibles();
-  const totalB = gastos.reduce((a,r)=>a+montoCOP(r),0);
+  const totalB = gastos.reduce((a,r)=>a+r.monto,0);
   $('totalFiltrado').textContent = gastos.length ? '· ' + fmt(totalB) : '';
   $('listaGastos').innerHTML = gastos.length ? gastos.slice().reverse().map(r=>rowHTML(r,{conBorrar:true, conEditar:true})).join('') : '<p class="empty">No hay gastos que coincidan.</p>';
   document.querySelectorAll('#listaGastos .del').forEach(btn => btn.addEventListener('click', onBorrar));
@@ -936,11 +939,12 @@ function renderBalanceTab(){
 
   // 5. Deuda de tarjetas frente al ingreso del periodo Y frente al cupo, nombrando la tarjeta más pesada
   const deudaPorTarjeta = {};
+  Object.keys(tarjetasConfig).forEach(n => { deudaPorTarjeta[n] = tarjetasConfig[n].deudaInicial || 0; });
   registros.filter(r => r.tipo === 'gasto' && r.metodoPago === 'tarjeta' && r.tarjeta).forEach(r => {
-    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) + montoCOP(r);
+    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) + r.monto;
   });
   registros.filter(r => r.tipo === 'pago_tarjeta' && r.tarjeta).forEach(r => {
-    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) - montoCOP(r);
+    deudaPorTarjeta[r.tarjeta] = (deudaPorTarjeta[r.tarjeta] || 0) - r.monto;
   });
   const tarjetasConDeuda = Object.entries(deudaPorTarjeta).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
   if(tarjetasConDeuda.length){
@@ -968,12 +972,12 @@ function renderBalanceTab(){
   const porTarjeta = {};
   registros.filter(r => r.tipo === 'gasto' && r.metodoPago === 'tarjeta' && r.tarjeta).forEach(r => {
     if(!porTarjeta[r.tarjeta]) porTarjeta[r.tarjeta] = { comprado: 0, pagado: 0, cuotaMensual: 0 };
-    porTarjeta[r.tarjeta].comprado += montoCOP(r);
-    porTarjeta[r.tarjeta].cuotaMensual += montoCOP(r) / (r.cuotas || 1);
+    porTarjeta[r.tarjeta].comprado += r.monto;
+    porTarjeta[r.tarjeta].cuotaMensual += r.monto / (r.cuotas || 1);
   });
   registros.filter(r => r.tipo === 'pago_tarjeta' && r.tarjeta).forEach(r => {
     if(!porTarjeta[r.tarjeta]) porTarjeta[r.tarjeta] = { comprado: 0, pagado: 0, cuotaMensual: 0 };
-    porTarjeta[r.tarjeta].pagado += montoCOP(r);
+    porTarjeta[r.tarjeta].pagado += r.monto;
   });
   Object.keys(tarjetasConfig).forEach(n => { if(!porTarjeta[n]) porTarjeta[n] = { comprado: 0, pagado: 0, cuotaMensual: 0 }; });
 
@@ -981,12 +985,13 @@ function renderBalanceTab(){
   $('resumenTarjetas').innerHTML = nombresTarjetas.length ? nombresTarjetas.map(n => {
     const tj = porTarjeta[n];
     const cfg = tarjetasConfig[n] || {};
-    const deuda = tj.comprado - tj.pagado;
+    const deuda = (cfg.deudaInicial || 0) + tj.comprado - tj.pagado;
     let html = '<div class="row" style="align-items:flex-start;"><div><span style="font-size:14px; font-weight:500;">💳 '+n+'</span>';
     const detalles = [];
     if(cfg.tasaInteres) detalles.push(cfg.tasaInteres+'% EA');
     if(cfg.diaCorte) detalles.push('corte día '+cfg.diaCorte);
     if(cfg.diaPago) detalles.push('pago día '+cfg.diaPago);
+    if(cfg.deudaInicial) detalles.push('deuda inicial '+fmt(cfg.deudaInicial));
     if(detalles.length) html += '<p class="meta" style="margin-top:2px;">'+detalles.join(' · ')+'</p>';
     html += '</div><div style="text-align:right;">';
     html += '<span class="amt '+(deuda > 0 ? 'gasto' : 'in')+'" style="display:block;">'+fmt(deuda)+' deuda</span>';
@@ -1053,11 +1058,6 @@ function onEditar(e){
     $('nombreTarjeta').value = r.tarjeta || '';
     $('numCuotas').value = r.cuotas || '';
   }
-  $('moneda').value = r.moneda || 'COP';
-  const esExtranjera = (r.moneda || 'COP') !== 'COP';
-  $('tasaCambio').classList.toggle('hidden', !esExtranjera);
-  $('avisoTasaCambio').classList.toggle('hidden', !esExtranjera);
-  $('tasaCambio').value = esExtranjera ? (r.tasaCambio || '') : '';
   $('editingBanner').classList.remove('hidden');
   $('btnAgregar').textContent = 'Guardar cambios';
   setTab('agregar');
@@ -1078,10 +1078,6 @@ function cancelarEdicion(){
   $('nombreTarjeta').value = '';
   $('numCuotas').value = '';
   $('tarjetaPago').value = '';
-  $('moneda').value = 'COP';
-  $('tasaCambio').value = '';
-  $('tasaCambio').classList.add('hidden');
-  $('avisoTasaCambio').classList.add('hidden');
 }
 $('btnCancelarEdicion').addEventListener('click', cancelarEdicion);
 
@@ -1096,8 +1092,8 @@ function csvEscape(v){
   return s.includes(',') || s.includes('"') ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
 $('btnDescargar').addEventListener('click', () => {
-  const filas = [['Tipo','Fecha','Categoría','Descripción','Monto','Moneda','TasaCambio','MontoCOP','TasaEA','MovimientoAhorro']];
-  registrosFiltrados().forEach(r => filas.push([r.tipo, r.fecha, r.categoria, r.descripcion, r.monto, r.moneda || 'COP', r.tasaCambio || 1, montoCOP(r), r.tasaEA||'', r.movimientoAhorro||'']));
+  const filas = [['Tipo','Fecha','Categoría','Descripción','Monto ('+monedaCuenta+')','TasaEA','MovimientoAhorro']];
+  registrosFiltrados().forEach(r => filas.push([r.tipo, r.fecha, r.categoria, r.descripcion, r.monto, r.tasaEA||'', r.movimientoAhorro||'']));
   const csv = filas.map(f => f.map(csvEscape).join(',')).join('\n');
   const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -1110,13 +1106,7 @@ $('btnAgregar').addEventListener('click', async () => {
   const monto = parseFloat($('monto').value);
   const descripcion = $('descripcion').value.trim();
   const fecha = $('fecha').value;
-  const moneda = $('moneda').value;
-  const tasaCambio = parseFloat($('tasaCambio').value) || 0;
   if(!monto || monto <= 0 || !descripcion || !fecha) return;
-  if(moneda !== 'COP' && tasaCambio <= 0){
-    $('avisoTasaCambio').classList.remove('hidden');
-    return;
-  }
 
   // Transferencia entre bolsillos: crea un retiro + un aporte, en una sola acción
   if(tipo === 'ahorro' && movimientoAhorro === 'transferencia' && editingId === null){
@@ -1130,8 +1120,8 @@ $('btnAgregar').addEventListener('click', async () => {
 
     $('btnAgregar').disabled = true;
     try {
-      const retiro = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido a '+destino+')', categoria: origen, bolsillo: origen, tasaEA: tasaOrigen, fecha, movimientoAhorro:'retiro', moneda, tasaCambio: moneda==='COP'?1:tasaCambio };
-      const aporte = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido desde '+origen+')', categoria: destino, bolsillo: destino, tasaEA: tasaDestino, fecha, movimientoAhorro:'aporte', moneda, tasaCambio: moneda==='COP'?1:tasaCambio };
+      const retiro = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido a '+destino+')', categoria: origen, bolsillo: origen, tasaEA: tasaOrigen, fecha, movimientoAhorro:'retiro' };
+      const aporte = { tipo:'ahorro', monto, descripcion: descripcion+' (transferido desde '+origen+')', categoria: destino, bolsillo: destino, tasaEA: tasaDestino, fecha, movimientoAhorro:'aporte' };
       const r1 = await supabaseClient.from('registros').insert(toDB(retiro));
       if(r1.error) throw r1.error;
       const r2 = await supabaseClient.from('registros').insert(toDB(aporte));
@@ -1169,8 +1159,6 @@ $('btnAgregar').addEventListener('click', async () => {
   } else {
     datosNuevos = { tipo, monto, descripcion, categoria: $('categoria').value, fecha };
   }
-  datosNuevos.moneda = moneda;
-  datosNuevos.tasaCambio = moneda === 'COP' ? 1 : tasaCambio;
 
   $('btnAgregar').disabled = true;
   try {
@@ -1185,7 +1173,6 @@ $('btnAgregar').addEventListener('click', async () => {
       if(tipo === 'gasto'){ $('nombreTarjeta').value = ''; $('numCuotas').value = ''; metodoPago = 'efectivo'; pintarBotonMetodoPago(); }
       if(tipo === 'pago_tarjeta'){ $('tarjetaPago').value = ''; }
       $('monto').value = ''; $('descripcion').value = '';
-      $('moneda').value = 'COP'; $('tasaCambio').value = ''; $('tasaCambio').classList.add('hidden'); $('avisoTasaCambio').classList.add('hidden');
     }
     mostrarEstadoGuardado(true);
     registros = await cargarRegistros();
