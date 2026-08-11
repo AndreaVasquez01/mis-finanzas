@@ -148,20 +148,17 @@
 <div class="login-wrap hidden" id="loginScreen">
   <div class="login-card" id="pedirCorreoCard">
     <h1>Mis finanzas</h1>
-    <p class="sub" id="loginSub">Escribe tu correo y te enviamos un código para entrar. Sin contraseña que recordar.</p>
+    <p class="sub" id="loginSub">Escribe tu correo y contraseña para entrar.</p>
     <div id="loginError" class="login-error hidden"></div>
     <div id="loginInfo" class="login-info hidden"></div>
 
-    <div id="pasoCorreo">
-      <input type="email" id="loginEmail" placeholder="Correo electrónico" class="gap" autocomplete="email" />
-      <button class="submit-btn" id="btnLoginSubmit">Enviar código</button>
+    <input type="email" id="loginEmail" placeholder="Correo electrónico" class="gap" autocomplete="email" />
+    <div class="password-field gap">
+      <input type="password" id="loginPassword" placeholder="Contraseña" autocomplete="current-password" />
+      <button type="button" id="togglePassword" aria-label="Mostrar contraseña">👁</button>
     </div>
-
-    <div id="pasoCodigo" class="hidden">
-      <input type="text" id="loginCodigo" placeholder="Código de 6 dígitos" class="gap" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
-      <button class="submit-btn" id="btnVerificarCodigo">Verificar código</button>
-      <button type="button" id="btnCambiarCorreo" style="width:100%; background:none; border:none; color:var(--text-2); font-family:inherit; font-size:12.5px; text-decoration:underline; cursor:pointer; margin-top:12px;">Usar otro correo / reenviar código</button>
-    </div>
+    <button class="submit-btn" id="btnLoginSubmit">Iniciar sesión</button>
+    <p class="hint" style="text-align:center; margin-top:12px;">¿No tienes cuenta? Pídele a quien administra la app que te cree una.</p>
   </div>
 </div>
 
@@ -419,9 +416,7 @@ function toDB(datos){
   };
 }
 
-// ---------- AUTENTICACIÓN (sin contraseña, con código al correo) ----------
-let correoEnProceso = '';
-
+// ---------- AUTENTICACIÓN (correo + contraseña, sin envío de correos) ----------
 function mostrarErrorLogin(msg){
   $('loginError').textContent = msg;
   $('loginError').classList.remove('hidden');
@@ -437,53 +432,33 @@ function limpiarMensajesLogin(){
   $('loginInfo').classList.add('hidden');
 }
 
+$('togglePassword').addEventListener('click', () => {
+  const input = $('loginPassword');
+  const btn = $('togglePassword');
+  if(input.type === 'password'){ input.type = 'text'; btn.textContent = '🙈'; btn.setAttribute('aria-label','Ocultar contraseña'); }
+  else { input.type = 'password'; btn.textContent = '👁'; btn.setAttribute('aria-label','Mostrar contraseña'); }
+});
+
+function traducirErrorLogin(msg){
+  if(/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
+  return msg;
+}
+
 $('btnLoginSubmit').addEventListener('click', async () => {
   const email = $('loginEmail').value.trim();
-  if(!email){ mostrarErrorLogin('Escribe tu correo.'); return; }
+  const password = $('loginPassword').value;
+  if(!email || !password){ mostrarErrorLogin('Completa correo y contraseña.'); return; }
   $('btnLoginSubmit').disabled = true;
   limpiarMensajesLogin();
   try {
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true }
-    });
-    if(error) throw error;
-    correoEnProceso = email;
-    $('pasoCorreo').classList.add('hidden');
-    $('pasoCodigo').classList.remove('hidden');
-    $('loginSub').textContent = 'Escribe el código de 6 dígitos que enviamos a '+email+'.';
-    mostrarInfoLogin('Código enviado. Revisa tu correo (también la carpeta de spam).');
-    $('loginCodigo').focus();
-  } catch(e){
-    mostrarErrorLogin(e.message);
-  } finally {
-    $('btnLoginSubmit').disabled = false;
-  }
-});
-
-$('btnVerificarCodigo').addEventListener('click', async () => {
-  const codigo = $('loginCodigo').value.trim();
-  if(!codigo){ mostrarErrorLogin('Escribe el código que te llegó por correo.'); return; }
-  $('btnVerificarCodigo').disabled = true;
-  limpiarMensajesLogin();
-  try {
-    const { error } = await supabaseClient.auth.verifyOtp({ email: correoEnProceso, token: codigo, type: 'email' });
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if(error) throw error;
     // onAuthStateChange se encarga de mostrar la app
   } catch(e){
-    mostrarErrorLogin(/expired|invalid/i.test(e.message) ? 'Código incorrecto o vencido. Pide uno nuevo.' : e.message);
+    mostrarErrorLogin(traducirErrorLogin(e.message));
   } finally {
-    $('btnVerificarCodigo').disabled = false;
+    $('btnLoginSubmit').disabled = false;
   }
-});
-
-$('btnCambiarCorreo').addEventListener('click', () => {
-  correoEnProceso = '';
-  $('loginCodigo').value = '';
-  $('pasoCodigo').classList.add('hidden');
-  $('pasoCorreo').classList.remove('hidden');
-  $('loginSub').textContent = 'Escribe tu correo y te enviamos un código para entrar. Sin contraseña que recordar.';
-  limpiarMensajesLogin();
 });
 
 $('btnSignOut').addEventListener('click', async () => {
@@ -521,12 +496,8 @@ function mostrarLogin(){
   profiles = [];
   mesActivo = 'todos';
   mesFiltroInicializado = false;
-  correoEnProceso = '';
   $('loginEmail').value = '';
-  $('loginCodigo').value = '';
-  $('pasoCodigo').classList.add('hidden');
-  $('pasoCorreo').classList.remove('hidden');
-  $('loginSub').textContent = 'Escribe tu correo y te enviamos un código para entrar. Sin contraseña que recordar.';
+  $('loginPassword').value = '';
   $('loginError').classList.add('hidden');
   $('loginInfo').classList.add('hidden');
   $('adminBadge').classList.add('hidden');
